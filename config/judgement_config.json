@@ -1,0 +1,83 @@
+{
+    "threads": 50,
+    "timeout": 20,
+    "delay": 0.01,
+    "max_retries": 3,
+    "user_agent": "Judgement/5.0 (Ultimate Security Testing Framework)",
+    "headers": {
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1"
+    },
+    "seclists": {
+        "auto_download": true,
+        "sources": [
+            "https://github.com/danielmiessler/SecLists/archive/master.zip"
+        ]
+    },
+    "fuzzing": {
+        "extensions": [
+            ".php",
+            ".html",
+            ".asp",
+            ".aspx",
+            ".jsp",
+            ".cgi",
+            ".pl",
+            ".sh",
+            ".bak",
+            ".backup",
+            ".old",
+            ".swp",
+            "~",
+            ".tmp",
+            ".temp",
+            ".log",
+            ".txt",
+            ".conf",
+            ".config",
+            ".db",
+            ".sql"
+        ],
+        "methods": [
+            "GET",
+            "POST",
+            "PUT",
+            "DELETE",
+            "PATCH",
+            "HEAD",
+            "OPTIONS"
+        ],
+        "payloads": {
+            "sql_injection": "payloads/sql_injection.txt",
+            "xss": "payloads/xss.txt",
+            "command_injection": "payloads/command_injection.txt",
+            "ssti": "payloads/ssti.txt",
+            "path_traversal": "payloads/path_traversal.txt",
+            "xxe": "payloads/xxe.txt",
+            "ssrf": "payloads/ssrf.txt",
+            "ldap_injection": "payloads/ldap_injection.txt",
+            "nosql_injection": "payloads/nosql_injection.txt",
+            "xpath_injection": "payloads/xpath_injection.txt",
+            "crlf_injection": "payloads/crlf_injection.txt",
+            "http_header_injection": "payloads/http_header_injection.txt"
+        }
+    },
+    "bruteforce": {
+        "usernames": "wordlists/usernames.txt",
+        "passwords": "wordlists/passwords.txt",
+        "credentials": "wordlists/credentials.txt"
+    },
+    "scanning": {
+        "depth": "deep",
+        "aggression": "balanced",
+        "detection_level": "intelligent"
+    },
+    "reporting": {
+        "format": "html",
+        "auto_save": true,
+        "include_evidence": true
+    }
+}

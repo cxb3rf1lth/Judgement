@@ -2235,7 +2235,7 @@ class DeepBruteForcer:
         self.wordlist_manager = wordlist_manager
         self.db_manager = db_manager
         self.session = requests.Session()
-        self.session.headers.update({"User-Agent": config["user_agent"]])
+        self.session.headers.update({"User-Agent": config["user_agent"]})
         self.session.headers.update(config["headers"])
         self.results = []
         self.scan_depth = config["scanning"]["depth"]

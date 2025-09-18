@@ -1,4 +1,24 @@
 # Judgement Security Testing Framework Requirements
-requests>=2.25.0
-rich>=13.0.0
-urllib3>=1.26.0
+# Core Dependencies
+requests>=2.31.0
+rich>=13.7.0
+urllib3>=2.0.7
+
+# Additional Security & Development Dependencies  
+beautifulsoup4>=4.12.0    # HTML parsing for advanced analysis
+lxml>=4.9.0               # XML processing for XXE and parsing
+pycurl>=7.45.0            # Alternative HTTP client for edge cases
+dnspython>=2.4.0          # DNS resolution and subdomain enumeration
+cryptography>=41.0.0      # Encryption utilities and certificate handling
+colorama>=0.4.6           # Cross-platform colored terminal text
+
+# Development and Testing (Optional)
+pytest>=7.4.0             # Testing framework
+black>=23.0.0             # Code formatting
+flake8>=6.0.0             # Code linting
+mypy>=1.5.0               # Type checking
+coverage>=7.3.0           # Code coverage analysis
+
+# Documentation (Optional)
+sphinx>=7.1.0             # Documentation generation
+sphinx-rtd-theme>=1.3.0   # Documentation theme

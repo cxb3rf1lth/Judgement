@@ -1,0 +1,4 @@
+# Judgement Security Testing Framework Requirements
+requests>=2.25.0
+rich>=13.0.0
+urllib3>=1.26.0

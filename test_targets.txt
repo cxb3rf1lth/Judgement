@@ -1,0 +1,7 @@
+# Test targets for web application security testing
+https://httpbin.org/status/200
+https://httpbin.org/json
+https://httpbin.org/headers
+# Comment lines are ignored
+https://jsonplaceholder.typicode.com/posts/1
+https://jsonplaceholder.typicode.com/users/1

@@ -3111,11 +3111,12 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
         menu.add("[4] Parameter Fuzzing")
         menu.add("[5] Brute Force Testing")
         menu.add("[6] Full Intelligent Assessment")
-        menu.add("[7] View Reports")
-        menu.add("[8] View Vulnerable Fields")
-        menu.add("[9] Villain C2 Management")
-        menu.add("[10] Configuration")
-        menu.add("[11] Exit")
+        menu.add("[7] Target File Management")
+        menu.add("[8] View Reports")
+        menu.add("[9] View Vulnerable Fields")
+        menu.add("[10] Villain C2 Management")
+        menu.add("[11] Configuration")
+        menu.add("[12] Exit")
         self.console.print(menu)
         
     def config_menu(self):
@@ -3152,7 +3153,7 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
         
         while True:
             self.main_menu()
-            choice = Prompt.ask("Select option", choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"])
+            choice = Prompt.ask("Select option", choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"])
             
             if choice == "1":
                 self.target_discovery()
@@ -3167,14 +3168,16 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
             elif choice == "6":
                 self.full_assessment()
             elif choice == "7":
-                self.view_reports()
+                self.target_file_management()
             elif choice == "8":
-                self.view_vuln_fields()
+                self.view_reports()
             elif choice == "9":
-                self.villain_management()
+                self.view_vuln_fields()
             elif choice == "10":
-                self.configuration()
+                self.villain_management()
             elif choice == "11":
+                self.configuration()
+            elif choice == "12":
                 self.console.print("[bold green]Exiting Judgement. Happy hunting![/bold green]")
                 break
                 
@@ -3781,6 +3784,289 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
                 self.wordlist_manager, self.payload_generator, self.villain_manager
             )
             self.console.print("[green]Villain C2 framework initialized[/green]")
+
+    def target_file_management(self):
+        """Target file management menu"""
+        while True:
+            self.target_file_menu()
+            choice = Prompt.ask("Select option", choices=["1", "2", "3", "4", "5", "6"])
+            
+            if choice == "1":
+                self.select_target_file()
+            elif choice == "2":
+                self.create_target_file()
+            elif choice == "3":
+                self.view_target_file()
+            elif choice == "4":
+                self.run_scan_from_file()
+            elif choice == "5":
+                self.run_full_assessment_from_file()
+            elif choice == "6":
+                break
+
+    def target_file_menu(self):
+        """Display target file management menu"""
+        menu = Tree("[bold blue]Target File Management[/bold blue]")
+        menu.add("[1] Select Target File from Directory")
+        menu.add("[2] Create New Target File")
+        menu.add("[3] View Current Target File")
+        menu.add("[4] Run Single Scan Type on Target File")
+        menu.add("[5] Run Full Assessment on Target File")
+        menu.add("[6] Back to Main Menu")
+        self.console.print(menu)
+
+    def select_target_file(self):
+        """Select a target file from directory"""
+        self.console.print("\n[bold blue]Select Target File[/bold blue]")
+        
+        # List available text files in current directory
+        available_files = []
+        for file in os.listdir("."):
+            if file.endswith(('.txt', '.list', '.targets')):
+                available_files.append(file)
+        
+        if not available_files:
+            self.console.print("[yellow]No target files found in current directory[/yellow]")
+            self.console.print("[cyan]Create a text file with one target URL per line[/cyan]")
+            return None
+        
+        self.console.print("\n[green]Available target files:[/green]")
+        for i, file in enumerate(available_files, 1):
+            self.console.print(f"  [{i}] {file}")
+        
+        try:
+            choice = int(Prompt.ask("Select file (number)")) - 1
+            if 0 <= choice < len(available_files):
+                selected_file = available_files[choice]
+                self.console.print(f"[green]Selected: {selected_file}[/green]")
+                return selected_file
+            else:
+                self.console.print("[red]Invalid selection[/red]")
+                return None
+        except (ValueError, IndexError):
+            self.console.print("[red]Invalid input[/red]")
+            return None
+
+    def create_target_file(self):
+        """Create a new target file with multiple targets"""
+        self.console.print("\n[bold blue]Create Target File[/bold blue]")
+        
+        filename = Prompt.ask("Enter filename for target file", default="targets.txt")
+        if not filename.endswith(('.txt', '.list', '.targets')):
+            filename += '.txt'
+        
+        targets = []
+        self.console.print("\n[cyan]Enter target URLs (one per line, press Enter on empty line to finish):[/cyan]")
+        
+        while True:
+            target = Prompt.ask("Target URL", default="")
+            if not target:
+                break
+            
+            # Validate and normalize URL
+            if not target.startswith(("http://", "https://")):
+                target = "http://" + target
+            
+            targets.append(target)
+            self.console.print(f"[green]Added: {target}[/green]")
+        
+        if targets:
+            try:
+                with open(filename, 'w') as f:
+                    for target in targets:
+                        f.write(target + '\n')
+                self.console.print(f"[green]Target file created: {filename} with {len(targets)} targets[/green]")
+            except Exception as e:
+                self.console.print(f"[red]Error creating file: {e}[/red]")
+        else:
+            self.console.print("[yellow]No targets entered[/yellow]")
+
+    def view_target_file(self):
+        """View contents of a target file"""
+        selected_file = self.select_target_file()
+        if not selected_file:
+            return
+        
+        try:
+            with open(selected_file, 'r') as f:
+                targets = [line.strip() for line in f if line.strip()]
+            
+            if targets:
+                self.console.print(f"\n[bold green]Contents of {selected_file}:[/bold green]")
+                for i, target in enumerate(targets, 1):
+                    self.console.print(f"  [{i}] {target}")
+                self.console.print(f"\n[cyan]Total targets: {len(targets)}[/cyan]")
+            else:
+                self.console.print(f"[yellow]{selected_file} is empty[/yellow]")
+                
+        except Exception as e:
+            self.console.print(f"[red]Error reading file: {e}[/red]")
+
+    def load_targets_from_file(self, filename):
+        """Load targets from a file"""
+        try:
+            with open(filename, 'r') as f:
+                targets = []
+                for line in f:
+                    target = line.strip()
+                    if target and not target.startswith('#'):  # Skip comments
+                        if not target.startswith(("http://", "https://")):
+                            target = "http://" + target
+                        targets.append(target)
+                return targets
+        except Exception as e:
+            self.console.print(f"[red]Error loading targets from file: {e}[/red]")
+            return []
+
+    def run_scan_from_file(self):
+        """Run a specific scan type on targets from file"""
+        selected_file = self.select_target_file()
+        if not selected_file:
+            return
+        
+        targets = self.load_targets_from_file(selected_file)
+        if not targets:
+            return
+        
+        self.console.print(f"[green]Loaded {len(targets)} targets from {selected_file}[/green]")
+        
+        # Select scan type
+        scan_menu = Tree("[bold blue]Select Scan Type[/bold blue]")
+        scan_menu.add("[1] Target Discovery")
+        scan_menu.add("[2] Parameter Discovery")
+        scan_menu.add("[3] Directory Fuzzing")
+        scan_menu.add("[4] Parameter Fuzzing")
+        scan_menu.add("[5] Brute Force Testing")
+        self.console.print(scan_menu)
+        
+        scan_choice = Prompt.ask("Select scan type", choices=["1", "2", "3", "4", "5"])
+        
+        # Run selected scan on all targets
+        results = []
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            transient=True
+        ) as progress:
+            task = progress.add_task("Scanning targets...", total=len(targets))
+            
+            for target in targets:
+                progress.update(task, description=f"Scanning {target}")
+                
+                try:
+                    if scan_choice == "1":
+                        discovery = IntelligentTargetDiscovery(self.config, self.logger, self.db_manager)
+                        result = discovery.discover_targets(target)
+                    elif scan_choice == "2":
+                        discovery = IntelligentParameterDiscovery(self.config, self.logger, self.db_manager)
+                        result = discovery.discover_parameters(target)
+                    elif scan_choice == "3":
+                        fuzzer = AdvancedFuzzer(self.config, self.logger, self.wordlist_manager, self.payload_generator, self.db_manager)
+                        result = fuzzer.fuzz_directories(target)
+                    elif scan_choice == "4":
+                        fuzzer = AdvancedFuzzer(self.config, self.logger, self.wordlist_manager, self.payload_generator, self.db_manager)
+                        result = fuzzer.fuzz_parameters(target)
+                    elif scan_choice == "5":
+                        bruteforcer = BruteForcer(self.config, self.logger, self.wordlist_manager, self.db_manager)
+                        result = bruteforcer.brute_force_auth(target)
+                    
+                    results.append({"target": target, "results": result})
+                    
+                except Exception as e:
+                    self.console.print(f"[red]Error scanning {target}: {e}[/red]")
+                    results.append({"target": target, "error": str(e)})
+                
+                progress.advance(task)
+        
+        # Display results summary
+        self.console.print(Panel("Scan Results Summary", style="green"))
+        for result in results:
+            if "error" in result:
+                self.console.print(f"[red]❌ {result['target']}: {result['error']}[/red]")
+            else:
+                count = len(result['results']) if isinstance(result['results'], list) else 1
+                self.console.print(f"[green]✅ {result['target']}: {count} findings[/green]")
+
+    def run_full_assessment_from_file(self):
+        """Run full assessment on targets from file"""
+        selected_file = self.select_target_file()
+        if not selected_file:
+            return
+        
+        targets = self.load_targets_from_file(selected_file)
+        if not targets:
+            return
+        
+        self.console.print(f"[green]Loaded {len(targets)} targets from {selected_file}[/green]")
+        
+        # Confirm before running full assessment
+        if not Confirm.ask(f"Run full assessment on {len(targets)} targets? This may take a long time."):
+            return
+        
+        # Villain C2 integration prompt
+        use_villain = False
+        if self.villain_manager:
+            use_villain = Confirm.ask("Enable Villain C2 integration for this assessment?", default=True)
+        
+        all_results = []
+        
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            transient=True
+        ) as progress:
+            task = progress.add_task("Running full assessments...", total=len(targets))
+            
+            for target in targets:
+                progress.update(task, description=f"Assessing {target}")
+                
+                try:
+                    # Run full assessment on this target
+                    results = self.orchestrator.run_intelligent_assessment(target)
+                    all_results.append({"target": target, "results": results})
+                    
+                except Exception as e:
+                    self.console.print(f"[red]Error assessing {target}: {e}[/red]")
+                    all_results.append({"target": target, "error": str(e)})
+                
+                progress.advance(task)
+        
+        # Display comprehensive results
+        self.console.print(Panel("Full Assessment Results", style="green"))
+        total_targets_found = 0
+        total_parameters_found = 0
+        total_findings = 0
+        
+        for result in all_results:
+            if "error" in result:
+                self.console.print(f"[red]❌ {result['target']}: {result['error']}[/red]")
+            else:
+                res = result['results']
+                targets_count = len(res.get('targets', []))
+                params_count = len(res.get('parameters', []))
+                findings_count = len(res.get('directory_findings', [])) + len(res.get('parameter_findings', []))
+                
+                total_targets_found += targets_count
+                total_parameters_found += params_count
+                total_findings += findings_count
+                
+                self.console.print(f"[green]✅ {result['target']}:[/green]")
+                self.console.print(f"    Targets: {targets_count}, Parameters: {params_count}, Findings: {findings_count}")
+        
+        self.console.print(f"\n[bold cyan]Overall Results:[/bold cyan]")
+        self.console.print(f"Total additional targets discovered: {total_targets_found}")
+        self.console.print(f"Total parameters discovered: {total_parameters_found}")
+        self.console.print(f"Total vulnerability findings: {total_findings}")
+        
+        # Show C2 results if Villain was used
+        if use_villain and self.villain_manager:
+            sessions = self.villain_manager.get_active_sessions()
+            if sessions:
+                self.console.print(f"\n[bold green]C2 Sessions Established: {len(sessions)}[/bold green]")
 
 def main():
     """Main execution function"""

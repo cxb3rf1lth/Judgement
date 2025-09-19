@@ -95,6 +95,8 @@ nosetests.xml
 coverage.xml
 *.cover
 .hypothesis/
+test_*.py
+*_test.py
 
 # Documentation
 docs/_build/

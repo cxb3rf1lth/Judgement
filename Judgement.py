@@ -3809,6 +3809,52 @@ class JudgementCLI:
             self.wordlist_manager, self.payload_generator, self.villain_manager
         )
         
+    def _get_validated_integer(self, prompt_text, default_value, min_value=1, max_value=None, allow_zero=False):
+        """Get validated integer input with retry logic"""
+        while True:
+            try:
+                user_input = Prompt.ask(prompt_text, default=str(default_value))
+                value = int(user_input)
+                
+                if not allow_zero and value < min_value:
+                    self.console.print(f"[yellow]Please enter a number >= {min_value}[/yellow]")
+                    continue
+                    
+                if allow_zero and value < 0:
+                    self.console.print("[yellow]Please enter a non-negative number[/yellow]")
+                    continue
+                    
+                if max_value and value > max_value:
+                    self.console.print(f"[yellow]Maximum allowed value is {max_value}. Using {max_value}.[/yellow]")
+                    return max_value
+                    
+                return value
+                
+            except ValueError:
+                self.console.print(f"[red]Invalid input '{user_input}'. Please enter a valid number.[/red]")
+                continue
+                
+    def _get_validated_float(self, prompt_text, default_value, min_value=0.0, max_value=None):
+        """Get validated float input with retry logic"""
+        while True:
+            try:
+                user_input = Prompt.ask(prompt_text, default=str(default_value))
+                value = float(user_input)
+                
+                if value < min_value:
+                    self.console.print(f"[yellow]Please enter a number >= {min_value}[/yellow]")
+                    continue
+                    
+                if max_value and value > max_value:
+                    self.console.print(f"[yellow]Maximum allowed value is {max_value}. Using {max_value}.[/yellow]")
+                    return max_value
+                    
+                return value
+                
+            except ValueError:
+                self.console.print(f"[red]Invalid input '{user_input}'. Please enter a valid number.[/red]")
+                continue
+        
     def show_banner(self):
         """Display the Judgement banner"""
         banner = """
@@ -3948,8 +3994,14 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
                 
         elif target_option == "range":
             base_url = Prompt.ask("Enter base URL (e.g., http://target.com/page?id=)")
-            start_range = int(Prompt.ask("Start range", default="1"))
-            end_range = int(Prompt.ask("End range", default="100"))
+            start_range = self._get_validated_integer("Start range", 1, min_value=1, max_value=99999)
+            
+            # Ensure end_range is at least start_range
+            while True:
+                end_range = self._get_validated_integer("End range", 100, min_value=1, max_value=99999)
+                if end_range >= start_range:
+                    break
+                self.console.print(f"[yellow]End range must be >= start range ({start_range})[/yellow]")
             
             for i in range(start_range, end_range + 1):
                 targets.append({
@@ -3977,8 +4029,8 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
             return
             
         # Configure injection parameters
-        max_threads = int(Prompt.ask("Max concurrent threads", default="10"))
-        request_delay = float(Prompt.ask("Delay between requests (seconds)", default="0.1"))
+        max_threads = self._get_validated_integer("Max concurrent threads", 10, min_value=1, max_value=200)
+        request_delay = self._get_validated_float("Delay between requests (seconds)", 0.1, min_value=0.0, max_value=10.0)
         
         # Execute standalone injection
         self.console.print(f"\n[bold yellow]Starting standalone injection on {len(targets)} targets...[/bold yellow]")
@@ -4735,7 +4787,7 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
             self.console.print(f"  [{i}] {filename}")
             
         try:
-            choice = int(Prompt.ask("Select file to view (number)")) - 1
+            choice = self._get_validated_integer("Select file to view (number)", 1, min_value=1, max_value=len(evidence_files)) - 1
             
             if 0 <= choice < len(evidence_files):
                 filepath = os.path.join(evidence_dir, evidence_files[choice])
@@ -4785,17 +4837,17 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
                 save_config(self.config)
                 self.console.print(f"[green]Scan depth set to: {depth}[/green]")
             elif choice == "2":
-                threads = int(Prompt.ask("Thread Count", default=str(self.config["threads"])))
+                threads = self._get_validated_integer("Thread Count", self.config["threads"], min_value=1, max_value=200)
                 self.config["threads"] = threads
                 save_config(self.config)
                 self.console.print(f"[green]Thread count set to: {threads}[/green]")
             elif choice == "3":
-                timeout = int(Prompt.ask("Timeout (seconds)", default=str(self.config["timeout"])))
+                timeout = self._get_validated_integer("Timeout (seconds)", self.config["timeout"], min_value=1, max_value=300)
                 self.config["timeout"] = timeout
                 save_config(self.config)
                 self.console.print(f"[green]Timeout set to: {timeout} seconds[/green]")
             elif choice == "4":
-                delay = float(Prompt.ask("Delay (seconds)", default=str(self.config["delay"])))
+                delay = self._get_validated_float("Delay (seconds)", self.config["delay"], min_value=0.0, max_value=60.0)
                 self.config["delay"] = delay
                 save_config(self.config)
                 self.console.print(f"[green]Delay set to: {delay} seconds[/green]")
@@ -4841,7 +4893,7 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
         
         # Configure settings
         host = Prompt.ask("Default listener host", default=villain_config.get("default_host", "0.0.0.0"))
-        port = int(Prompt.ask("Default listener port", default=str(villain_config.get("default_port", 4444))))
+        port = self._get_validated_integer("Default listener port", villain_config.get("default_port", 4444), min_value=1, max_value=65535)
         callback_url = Prompt.ask("Callback URL", default=f"http://{host}:{port}")
         auto_start = Confirm.ask("Auto-start listener?", default=villain_config.get("auto_start_listener", True))
         evidence_capture = Confirm.ask("Enable evidence capture?", default=villain_config.get("evidence_capture", True))
@@ -4917,7 +4969,7 @@ YSSY      YSSP~YSSY    SSS~YSSY      Y~YSSY    YSSP  SSS     S*S    YSSP  S*S   
             self.console.print(f"  [{i}] {file}")
         
         try:
-            choice = int(Prompt.ask("Select file (number)")) - 1
+            choice = self._get_validated_integer("Select file (number)", 1, min_value=1, max_value=len(available_files)) - 1
             if 0 <= choice < len(available_files):
                 selected_file = available_files[choice]
                 self.selected_target_file = selected_file  # Store the selected file
